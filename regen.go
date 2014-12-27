@@ -29,7 +29,9 @@ Constraints
 
 "." will generate any character, not necessarily a printable one.
 
-"x{0,}", "x*", and "x+" will generate a random number of x's up to MaxUpperBound.
+"x{0,}", "x*", and "x+" will generate a random number of x's up to an arbitrary limit.
+If you care about the maximum number, specify it explicitly in the expression,
+e.g. "x{0,256}".
 
 Flags
 
@@ -64,11 +66,13 @@ import (
 )
 
 /*
-MaxUpperBound is the number of instances to generate for unbounded repeat expressions.
+maxUpperBound is the number of instances to generate for unbounded repeat expressions.
+E.g. ".*" will generate no more than maxUpperBound characters.
 
-E.g. ".*" will generate no more than MaxUpperBound characters.
+This value could change at any time, and should not be relied upon. If you care about the
+upper bound, use something like ".{1,256}" in your expression.
 */
-const MaxUpperBound = 4096
+const maxUpperBound = 4096
 
 type GeneratorArgs struct {
 	// Default is util.NewRand(rand.Int63()).
@@ -339,7 +343,7 @@ func createRepeatingGenerator(r *syntax.Regexp, args *GeneratorArgs, min int, ma
 	}
 
 	if max < 0 {
-		max = MaxUpperBound
+		max = maxUpperBound
 	}
 
 	return aGenerator{r.String(), func() string {
