@@ -19,11 +19,11 @@ A library for generating random strings from regular expressions.
 The generated strings will match the expressions they were generated from.
 
 E.g.
-	Generate("[a-z0-9]{1,64}")
+	regen.Generate("[a-z0-9]{1,64}")
 will return a lowercase alphanumeric string
 between 1 and 64 characters long.
 */
-package goregen
+package regen
 
 import (
 	"bytes"
