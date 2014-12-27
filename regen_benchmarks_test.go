@@ -30,24 +30,44 @@ X-Auth-Token: [a-zA-Z0-9+/]{64}
 ){3,15}[A-Za-z0-9+/]{60}([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)
 `
 
-var args = &GeneratorArgs{
-	Rng: util.NewRand(42),
-}
+var rng = util.NewRand(42)
 
 // Benchmarks the code that creates generators.
 // Doesn't actually run the generators.
 func BenchmarkCreation(b *testing.B) {
+	// Create everything here to save allocations in the loop.
+	args := &GeneratorArgs{rng, 0, NewSerialExecutor()}
+
 	for i := 0; i < b.N; i++ {
 		NewGenerator(BigFancyRegexp, args)
 	}
 }
 
-func BenchmarkGeneration(b *testing.B) {
+func BenchmarkSerialGeneration(b *testing.B) {
+	args := &GeneratorArgs{
+		Rng:      rng,
+		Executor: NewSerialExecutor(),
+	}
 	generator, err := NewGenerator(BigFancyRegexp, args)
 	if err != nil {
 		panic(err)
 	}
-	//fmt.Printf("generated message:\n%s\n\n", generator(r))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		generator.Generate()
+	}
+}
+
+func BenchmarkParallelGeneration(b *testing.B) {
+	args := &GeneratorArgs{
+		Rng:      rng,
+		Executor: NewForkJoinExecutor(),
+	}
+	generator, err := NewGenerator(BigFancyRegexp, args)
+	if err != nil {
+		panic(err)
+	}
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {

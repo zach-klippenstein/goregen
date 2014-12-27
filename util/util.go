@@ -34,21 +34,10 @@ func Abs(val int32) int32 {
 	return val
 }
 
-// RunesToString converts a slice of runes to the string they represent.
-func RunesToString(runes ...rune) string {
+// Returns a string describing a regular expression.
+func InspectToStr(r *syntax.Regexp) string {
 	var buffer bytes.Buffer
-	for _, r := range runes {
-		buffer.WriteRune(r)
-	}
-	return buffer.String()
-}
-
-// RunesToDecimalString converts a slice of runes to their comma-separated decimal values.
-func RunesToDecimalString(runes []rune) string {
-	var buffer bytes.Buffer
-	for _, r := range runes {
-		buffer.WriteString(fmt.Sprintf("%d, ", r))
-	}
+	inspect(&buffer, r)
 	return buffer.String()
 }
 
@@ -61,28 +50,8 @@ func InspectPatternsToString(simplify bool, patterns ...string) string {
 	return buffer.String()
 }
 
-// ParseOrPanic parses a regular expression into an AST.
-// Panics on error.
-func ParseOrPanic(simplify bool, pattern string) *syntax.Regexp {
-	regexp, err := syntax.Parse(pattern, 0)
-	if err != nil {
-		panic(err)
-	}
-	if simplify {
-		regexp = regexp.Simplify()
-	}
-	return regexp
-}
-
-// Returns a string describing a regular expression.
-func InspectToStr(r *syntax.Regexp) string {
-	var buffer bytes.Buffer
-	inspect(&buffer, r)
-	return buffer.String()
-}
-
 func NewRand(seed int64) *rand.Rand {
-	return rand.New(rand.NewSource(seed))
+	return rand.New(newLockedSource(seed))
 }
 
 // OpToString gets the string name of a regular expression operation.
@@ -129,6 +98,42 @@ func OpToString(op syntax.Op) string {
 	}
 
 	panic(fmt.Sprintf("invalid op: %d", op))
+}
+
+// ParseOrPanic parses a regular expression into an AST.
+// Panics on error.
+func ParseOrPanic(simplify bool, pattern string) *syntax.Regexp {
+	regexp, err := syntax.Parse(pattern, 0)
+	if err != nil {
+		panic(err)
+	}
+	if simplify {
+		regexp = regexp.Simplify()
+	}
+	return regexp
+}
+
+// RunesToString converts a slice of runes to the string they represent.
+func RunesToString(runes ...rune) string {
+	defer func() {
+		if err := recover(); err != nil {
+			panic(fmt.Errorf("RunesToString panicked"))
+		}
+	}()
+	var buffer bytes.Buffer
+	for _, r := range runes {
+		buffer.WriteRune(r)
+	}
+	return buffer.String()
+}
+
+// RunesToDecimalString converts a slice of runes to their comma-separated decimal values.
+func RunesToDecimalString(runes []rune) string {
+	var buffer bytes.Buffer
+	for _, r := range runes {
+		buffer.WriteString(fmt.Sprintf("%d, ", r))
+	}
+	return buffer.String()
 }
 
 func inspectPatterns(simplify bool, w io.Writer, patterns ...string) {

@@ -49,7 +49,6 @@ Unicode groups are not supported at this time. Support may be added in the futur
 package regen
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/zach-klippenstein/goregen/util"
 	"math"
@@ -65,8 +64,16 @@ E.g. ".*" will generate no more than MaxUpperBound characters.
 const MaxUpperBound = 4096
 
 type GeneratorArgs struct {
-	Rng   *rand.Rand
+	// Default is util.NewRand(rand.Int63()).
+	// This *must* be safe for concurrent use.
+	Rng *rand.Rand
+
+	// Default is 0 (syntax.POSIX).
 	Flags syntax.Flags
+
+	// Used by Generators that execute multiple sub-generators.
+	// Default is NewSerialExecutor().
+	Executor GeneratorExecutor
 }
 
 // Generator generates random strings.
@@ -74,10 +81,17 @@ type Generator interface {
 	Generate() string
 }
 
-type aGenerator func() string
+type aGenerator struct {
+	Name string
+	Call func() string
+}
 
 func (gen aGenerator) Generate() string {
-	return gen()
+	return gen.Call()
+}
+
+func (gen aGenerator) String() string {
+	return gen.Name
 }
 
 // generatorFactory is a function that creates a random string generator from a regular expression AST.
@@ -133,6 +147,9 @@ func NewGenerator(r string, args *GeneratorArgs) (generator Generator, err error
 	if nil == args.Rng {
 		args.Rng = util.NewRand(rand.Int63())
 	}
+	if nil == args.Executor {
+		args.Executor = NewSerialExecutor()
+	}
 
 	// unicode groups only allowed with Perl
 	if (args.Flags&syntax.UnicodeGroups) == syntax.UnicodeGroups && (args.Flags&syntax.Perl) != syntax.Perl {
@@ -179,36 +196,36 @@ func newGenerator(r *syntax.Regexp, args *GeneratorArgs) (generator Generator, e
 
 // Generator that does nothing.
 func noop(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	return aGenerator(func() string {
+	return aGenerator{r.String(), func() string {
 		return ""
-	}), nil
+	}}, nil
 }
 
 func opEmptyMatch(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 	enforceOp(r, syntax.OpEmptyMatch)
-	return aGenerator(func() string {
+	return aGenerator{r.String(), func() string {
 		return ""
-	}), nil
+	}}, nil
 }
 
 func opLiteral(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 	enforceOp(r, syntax.OpLiteral)
-	return aGenerator(func() string {
+	return aGenerator{r.String(), func() string {
 		return util.RunesToString(r.Rune...)
-	}), nil
+	}}, nil
 }
 
 func opAnyChar(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 	enforceOp(r, syntax.OpAnyChar)
-	return aGenerator(func() string {
+	return aGenerator{r.String(), func() string {
 		return util.RunesToString(rune(args.Rng.Int31()))
-	}), nil
+	}}, nil
 }
 
 func opAnyCharNotNl(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 	enforceOp(r, syntax.OpAnyCharNotNL)
 	charClass := util.NewCharClass(1, rune(math.MaxInt32))
-	return createCharClassGenerator(charClass, args)
+	return createCharClassGenerator(r.String(), charClass, args)
 }
 
 func opQuest(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
@@ -236,7 +253,7 @@ func opRepeat(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 func opCharClass(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 	enforceOp(r, syntax.OpCharClass)
 	charClass := util.ParseCharClass(r.Rune)
-	return createCharClassGenerator(charClass, args)
+	return createCharClassGenerator(r.String(), charClass, args)
 }
 
 func opConcat(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
@@ -247,13 +264,9 @@ func opConcat(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 		return nil, generatorError(err, "error creating generators for concat pattern /%s/", r.String())
 	}
 
-	return aGenerator(func() string {
-		var buffer bytes.Buffer
-		for _, generator := range generators {
-			buffer.WriteString(generator.Generate())
-		}
-		return buffer.String()
-	}), nil
+	return aGenerator{r.String(), func() string {
+		return args.Executor.Execute(generators)
+	}}, nil
 }
 
 func opAlternate(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
@@ -266,11 +279,11 @@ func opAlternate(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 
 	var numGens int = len(generators)
 
-	return aGenerator(func() string {
+	return aGenerator{r.String(), func() string {
 		i := args.Rng.Intn(numGens)
 		generator := generators[i]
 		return generator.Generate()
-	}), nil
+	}}, nil
 }
 
 func opCapture(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
@@ -299,12 +312,12 @@ func enforceSingleSub(r *syntax.Regexp) error {
 	return nil
 }
 
-func createCharClassGenerator(charClass *util.CharClass, args *GeneratorArgs) (Generator, error) {
-	return aGenerator(func() string {
-		i := util.Abs(args.Rng.Int31n(charClass.TotalSize))
+func createCharClassGenerator(name string, charClass *util.CharClass, args *GeneratorArgs) (Generator, error) {
+	return aGenerator{name, func() string {
+		i := args.Rng.Int31n(charClass.TotalSize)
 		r := charClass.GetRuneAt(i)
 		return util.RunesToString(r)
-	}), nil
+	}}, nil
 }
 
 // Returns a generator that will run the generator for r's sub-expression [min, max] times.
@@ -322,14 +335,8 @@ func createRepeatingGenerator(r *syntax.Regexp, args *GeneratorArgs, min int, ma
 		max = MaxUpperBound
 	}
 
-	return aGenerator(func() string {
-		var buffer bytes.Buffer
+	return aGenerator{r.String(), func() string {
 		n := min + args.Rng.Intn(max-min+1)
-
-		for ; n > 0; n-- {
-			buffer.WriteString(generator.Generate())
-		}
-
-		return buffer.String()
-	}), nil
+		return Execute(args.Executor, generator, n)
+	}}, nil
 }
