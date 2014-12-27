@@ -22,6 +22,29 @@ E.g.
 	regen.Generate("[a-z0-9]{1,64}")
 will return a lowercase alphanumeric string
 between 1 and 64 characters long.
+
+Expressions are parsed using the Go standard library's parser: http://golang.org/pkg/regexp/syntax/.
+
+Constraints
+
+"." will generate any character, not necessarily a printable one.
+
+"x{0,}", "x*", and "x+" will generate a random number of x's up to MaxUpperBound.
+
+Flags
+
+Flags can be passed to the parser by setting them in the GeneratorArgs struct.
+Newline flags are respected, and newlines won't be generated unless the appropriate flags for
+matching them are set.
+
+E.g.
+Generate(".|[^a]") will never generate newlines. To generate newlines, create a generator and pass
+the flag syntax.MatchNL.
+
+The Perl character class flag is supported, and required if the pattern contains them.
+
+Unicode groups are not supported at this time. Support may be added in the future.
+
 */
 package regen
 
@@ -29,6 +52,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/zach-klippenstein/goregen/util"
+	"math"
 	"math/rand"
 	"regexp/syntax"
 )
@@ -36,16 +60,13 @@ import (
 /*
 MaxUpperBound is the number of instances to generate for unbounded repeat expressions.
 
-E.g. .* will generate no more than MaxUpperBound characters.
+E.g. ".*" will generate no more than MaxUpperBound characters.
 */
 const MaxUpperBound = 4096
 
-var defaultGeneratorArgs = GeneratorArgs{
-	Rng: util.NewRand(rand.Int63()),
-}
-
 type GeneratorArgs struct {
-	Rng *rand.Rand
+	Rng   *rand.Rand
+	Flags syntax.Flags
 }
 
 // Generator generates random strings.
@@ -88,8 +109,13 @@ func init() {
 	}
 }
 
-// Generate a random string that matches the regular expression r.
-// If args is nil, default values are used.
+/*
+Generate a random string that matches the regular expression r.
+If args is nil, default values are used.
+
+This function does not seed the default RNG, so you must call rand.Seed() if you want
+non-deterministic strings.
+*/
 func Generate(r string) (string, error) {
 	generator, err := NewGenerator(r, nil)
 	if err != nil {
@@ -102,12 +128,19 @@ func Generate(r string) (string, error) {
 // If args is nil, default values are used.
 func NewGenerator(r string, args *GeneratorArgs) (generator Generator, err error) {
 	if nil == args {
-		defaultCopy := defaultGeneratorArgs
-		args = &defaultCopy
+		args = &GeneratorArgs{}
+	}
+	if nil == args.Rng {
+		args.Rng = util.NewRand(rand.Int63())
+	}
+
+	// unicode groups only allowed with Perl
+	if (args.Flags&syntax.UnicodeGroups) == syntax.UnicodeGroups && (args.Flags&syntax.Perl) != syntax.Perl {
+		return nil, generatorError(nil, "UnicodeGroups not supported")
 	}
 
 	var regexp *syntax.Regexp
-	regexp, err = syntax.Parse(r, 0)
+	regexp, err = syntax.Parse(r, args.Flags)
 	if err != nil {
 		return
 	}
@@ -174,9 +207,8 @@ func opAnyChar(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 
 func opAnyCharNotNl(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 	enforceOp(r, syntax.OpAnyCharNotNL)
-	return aGenerator(func() string {
-		return util.RunesToString(rune(args.Rng.Int31()))
-	}), nil
+	charClass := util.NewCharClass(1, rune(math.MaxInt32))
+	return createCharClassGenerator(charClass, args)
 }
 
 func opQuest(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
@@ -199,18 +231,12 @@ func opRepeat(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 	return createRepeatingGenerator(r, args, r.Min, r.Max)
 }
 
+// Handles syntax.ClassNL because the parser uses that flag to generate character
+// classes that respect it.
 func opCharClass(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
 	enforceOp(r, syntax.OpCharClass)
-	// case classes are encoded as pairs of runes representing ranges.
-	// e.g. [0-9] = 09, [a0] = aa00 (2 1-len ranges)
-
-	class := util.ParseCharClass(r.Rune)
-
-	return aGenerator(func() string {
-		i := util.Abs(args.Rng.Int31n(class.TotalSize))
-		r := class.GetRuneAt(i)
-		return util.RunesToString(r)
-	}), nil
+	charClass := util.ParseCharClass(r.Rune)
+	return createCharClassGenerator(charClass, args)
 }
 
 func opConcat(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
@@ -271,6 +297,14 @@ func enforceSingleSub(r *syntax.Regexp) error {
 			"%s expected 1 sub-expression, but got %d: %s", util.OpToString(r.Op), len(r.Sub), r)
 	}
 	return nil
+}
+
+func createCharClassGenerator(charClass *util.CharClass, args *GeneratorArgs) (Generator, error) {
+	return aGenerator(func() string {
+		i := util.Abs(args.Rng.Int31n(charClass.TotalSize))
+		r := charClass.GetRuneAt(i)
+		return util.RunesToString(r)
+	}), nil
 }
 
 // Returns a generator that will run the generator for r's sub-expression [min, max] times.

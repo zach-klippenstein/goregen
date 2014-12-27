@@ -22,6 +22,7 @@ import (
 	"github.com/zach-klippenstein/goregen/util"
 	"math/rand"
 	"regexp"
+	"regexp/syntax"
 	"testing"
 )
 
@@ -41,10 +42,11 @@ func ExampleGenerate() {
 
 func ExampleNewGenerator() {
 	pattern := "[ab]{5}"
-	args := &GeneratorArgs{
+
+	generator, _ := NewGenerator(pattern, &GeneratorArgs{
 		Rng: rand.New(rand.NewSource(0)),
-	}
-	generator, _ := NewGenerator(pattern, args)
+	})
+
 	str := generator.Generate()
 
 	if matched, _ := regexp.MatchString(pattern, str); matched {
@@ -52,6 +54,34 @@ func ExampleNewGenerator() {
 	}
 	// Output:
 	// Matches!
+}
+
+func ExampleNewGenerator_perl() {
+	pattern := `\d{5}`
+
+	generator, _ := NewGenerator(pattern, &GeneratorArgs{
+		Flags: syntax.Perl,
+	})
+
+	str := generator.Generate()
+
+	if matched, _ := regexp.MatchString("[[:digit:]]{5}", str); matched {
+		fmt.Println("Matches!")
+	}
+	// Output:
+	// Matches!
+}
+
+func TestNilArgs(t *testing.T) {
+	generator, err := NewGenerator("", nil)
+	assert.NotNil(t, generator)
+	assert.Nil(t, err)
+}
+
+func TestNilArgValues(t *testing.T) {
+	generator, err := NewGenerator("", &GeneratorArgs{})
+	assert.NotNil(t, generator)
+	assert.Nil(t, err)
 }
 
 func TestEmpty(t *testing.T) {
@@ -63,20 +93,28 @@ func TestEmpty(t *testing.T) {
 
 func TestLiteralSingleChar(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t,
+	AssertGeneratesAndMatches(t, nil,
 		"a",
 		"abc",
 	)
 }
 
-func TestDot(t *testing.T) {
+func TestDotNotNl(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t, ".")
+	AssertGeneratesAndMatches(t, nil, ".")
+
+	generator, _ := NewGenerator(".", nil)
+
+	// Not a very strong assertion, but not sure how to do better. Exploring the entire
+	// generation space (2^32) takes far too long for a unit test.
+	for i := 0; i < SampleSize; i++ {
+		assert.NotEqual(t, "\n", generator.Generate())
+	}
 }
 
 func TestQuestionMark(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t,
+	AssertGeneratesAndMatches(t, nil,
 		"a?",
 		"(abc)?",
 		"[ab]?",
@@ -86,17 +124,17 @@ func TestQuestionMark(t *testing.T) {
 
 func TestPlus(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t, "a+")
+	AssertGeneratesAndMatches(t, nil, "a+")
 }
 
 func TestStar(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t, "a*")
+	AssertGeneratesAndMatches(t, nil, "a*")
 }
 
-func TestCharClass(t *testing.T) {
+func TestCharClassNotNl(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t,
+	AssertGeneratesAndMatches(t, nil,
 		"[a]",
 		"[abc]",
 		"[a-d]",
@@ -104,18 +142,24 @@ func TestCharClass(t *testing.T) {
 		"[0-9]",
 		"[a-z0-9]",
 	)
+
+	// Try to narrow down the generation space. Still not a very strong assertion.
+	generator, _ := NewGenerator("[^a-zA-Z0-9]", nil)
+	for i := 0; i < SampleSize; i++ {
+		assert.NotEqual(t, "\n", generator.Generate())
+	}
 }
 
 func TestNegativeCharClass(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t,
+	AssertGeneratesAndMatches(t, nil,
 		"[^a-zA-Z0-9]",
 	)
 }
 
 func TestOr(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t,
+	AssertGeneratesAndMatches(t, nil,
 		"a|b",
 		"abc|def|ghi",
 		"foo|bar|baz", // rewrites to foo|ba[rz]
@@ -133,7 +177,7 @@ func TestCapture(t *testing.T) {
 
 func TestConcat(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t,
+	AssertGeneratesAndMatches(t, nil,
 		"[ab][cd]",
 	)
 }
@@ -142,7 +186,9 @@ func TestRepeatHitsMin(t *testing.T) {
 	t.Parallel()
 	regexp := "a{0,3}"
 	var counts [4]int
-	args := &GeneratorArgs{util.NewRand(0)}
+	args := &GeneratorArgs{
+		Rng: util.NewRand(0),
+	}
 	generator, _ := NewGenerator(regexp, args)
 
 	for i := 0; i < SampleSize; i++ {
@@ -162,7 +208,9 @@ func TestRepeatHitsMax(t *testing.T) {
 	t.Parallel()
 	regexp := "a{0,3}"
 	var counts [4]int
-	args := &GeneratorArgs{util.NewRand(0)}
+	args := &GeneratorArgs{
+		Rng: util.NewRand(0),
+	}
 	generator, _ := NewGenerator(regexp, args)
 
 	for i := 0; i < SampleSize; i++ {
@@ -178,12 +226,55 @@ func TestRepeatHitsMax(t *testing.T) {
 	assert.True(t, counts[3] > 0)
 }
 
-func AssertGeneratesAndMatches(t *testing.T, patterns ...string) {
+func TestAsciiCharClasses(t *testing.T) {
+	t.Parallel()
+	AssertGeneratesAndMatches(t, nil,
+		"[[:alnum:]]",
+		"[[:alpha:]]",
+		"[[:ascii:]]",
+		"[[:blank:]]",
+		"[[:cntrl:]]",
+		"[[:digit:]]",
+		"[[:graph:]]",
+		"[[:lower:]]",
+		"[[:print:]]",
+		"[[:punct:]]",
+		"[[:space:]]",
+		"[[:upper:]]",
+		"[[:word:]]",
+		"[[:xdigit:]]",
+	)
+}
+
+func TestPerlCharClasses(t *testing.T) {
+	t.Parallel()
 	args := &GeneratorArgs{
-		Rng: util.NewRand(0),
+		Flags: syntax.Perl,
 	}
 
+	AssertGeneratesAndMatches(t, args,
+		`\d`,
+		`\D`,
+		`\s`,
+		`\S`,
+		`\w`,
+		`\W`,
+	)
+}
+
+func TestUnicodeGroupsNotSupported(t *testing.T) {
+	t.Parallel()
+	args := &GeneratorArgs{
+		Flags: syntax.UnicodeGroups,
+	}
+
+	_, err := NewGenerator("", args)
+	assert.Error(t, err)
+}
+
+func AssertGeneratesAndMatches(t *testing.T, args *GeneratorArgs, patterns ...string) {
 	for _, pattern := range patterns {
+		t.Logf("testing pattern /%s/", pattern)
 		AssertGenerates(t, args, pattern, pattern)
 	}
 }
@@ -193,7 +284,8 @@ func AssertGenerates(t *testing.T, args *GeneratorArgs, expectedPattern string, 
 }
 
 func AssertGeneratesTimes(t *testing.T, args *GeneratorArgs, expectedPattern string, pattern string, times int) {
-	generator, _ := NewGenerator(pattern, args)
+	generator, err := NewGenerator(pattern, args)
+	assert.NoError(t, err)
 
 	for i := 0; i < times; i++ {
 		result := generator.Generate()

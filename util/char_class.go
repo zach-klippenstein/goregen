@@ -27,9 +27,33 @@ type CharClass struct {
 	TotalSize int32
 }
 
-// ParseCharClass parses a character class as represented by syntax.Parse into a slice of CharClassRange structs.
-// e.g. "[a0-9]" -> "aa09" -> a, 0-9
-// e.g. "[^a-z]" -> "…" -> 0-(a-1), (z+1)-(max rune)
+// CharClassRange represents a single range of characters in a character class.
+type CharClassRange struct {
+	Start rune
+	Size  int32
+}
+
+// NewCharClass creates a character class with a single range.
+func NewCharClass(start rune, end rune) *CharClass {
+	charRange := NewCharClassRange(start, end)
+	return &CharClass{
+		Ranges:    []CharClassRange{charRange},
+		TotalSize: charRange.Size,
+	}
+}
+
+/*
+ParseCharClass parses a character class as represented by syntax.Parse into a slice of CharClassRange structs.
+
+Char classes are encoded as pairs of runes representing ranges:
+[0-9] = 09, [a0] = aa00 (2 1-len ranges).
+
+e.g.
+
+"[a0-9]" -> "aa09" -> a, 0-9
+
+"[^a-z]" -> "…" -> 0-(a-1), (z+1)-(max rune)
+*/
 func ParseCharClass(runes []rune) *CharClass {
 	var totalSize int32
 	numRanges := len(runes) / 2
@@ -39,10 +63,14 @@ func ParseCharClass(runes []rune) *CharClass {
 		start := runes[i*2]
 		end := runes[i*2+1]
 
-		r := CharClassRange{
-			Start: start,
-			Size:  end - start + 1,
+		// indicates a negative class
+		if start == 0 {
+			// doesn't make sense to generate null bytes, so all ranges must start at
+			// no less than 1.
+			start = 1
 		}
+
+		r := NewCharClassRange(start, end)
 
 		ranges[i] = r
 		totalSize += r.Size
@@ -62,10 +90,21 @@ func (class *CharClass) GetRuneAt(i int32) rune {
 	panic("index out of bounds")
 }
 
-// CharClassRange represents a single range of characters in a character class.
-type CharClassRange struct {
-	Start rune
-	Size  int32
+func NewCharClassRange(start rune, end rune) CharClassRange {
+	if start < 1 {
+		panic("char class range cannot contain runes less than 1")
+	}
+
+	size := end - start + 1
+
+	if size < 1 {
+		panic("char class range size must be at least 1")
+	}
+
+	return CharClassRange{
+		Start: start,
+		Size:  size,
+	}
 }
 
 func (r CharClassRange) String() string {
