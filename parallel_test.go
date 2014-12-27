@@ -94,7 +94,7 @@ func BenchmarkSerialExecutor(b *testing.B) {
 	}
 
 	for i := 0; i < b.N; i++ {
-		Execute(executor, generator, NumMocks)
+		executeGeneratorRepeatedly(executor, generator, NumMocks)
 	}
 }
 
@@ -108,7 +108,7 @@ func TestForkJoinExecutor(t *testing.T) {
 func TestForkJoinExecutorLarge(t *testing.T) {
 	executor := NewForkJoinExecutor()
 	generator := MockGenerator{SleepTime: 1 * time.Millisecond}
-	results := Execute(executor, generator, NumMocksLarge)
+	results := executeGeneratorRepeatedly(executor, generator, NumMocksLarge)
 	assert.Len(t, results, NumMocksLarge)
 }
 
@@ -128,7 +128,7 @@ func BenchmarkForkJoinExecutor(b *testing.B) {
 	}
 
 	for i := 0; i < b.N; i++ {
-		Execute(executor, generator, NumMocks)
+		executeGeneratorRepeatedly(executor, generator, NumMocks)
 	}
 }
 

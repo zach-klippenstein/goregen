@@ -37,7 +37,7 @@ type forkJoinExecutor struct{}
 var numCpu = runtime.NumCPU()
 
 // Execute executes a single generator n times.
-func Execute(executor GeneratorExecutor, generator Generator, n int) string {
+func executeGeneratorRepeatedly(executor GeneratorExecutor, generator Generator, n int) string {
 	generators := make([]Generator, n, n)
 
 	for i := 0; i < n; i++ {

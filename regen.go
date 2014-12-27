@@ -45,6 +45,13 @@ The Perl character class flag is supported, and required if the pattern contains
 
 Unicode groups are not supported at this time. Support may be added in the future.
 
+Multi-threading
+
+A generator is usually actually tree of generators, corresponding closely to the AST of the expression.
+By default, generators run their children serially. In most cases, this is probably fine. However,
+it can be changed by passing a different GeneratorExecutor in GeneratorArgs. NewForkJoinExecutor(), for example, will cause each
+sub-generator to run in its own goroutine. This may improve or degrade performance, depending on the regular
+expression. The package includes benchmarks that show both improved and degraded performance in different cases.
 */
 package regen
 
@@ -337,6 +344,6 @@ func createRepeatingGenerator(r *syntax.Regexp, args *GeneratorArgs, min int, ma
 
 	return aGenerator{r.String(), func() string {
 		n := min + args.Rng.Intn(max-min+1)
-		return Execute(args.Executor, generator, n)
+		return executeGeneratorRepeatedly(args.Executor, generator, n)
 	}}, nil
 }
