@@ -19,7 +19,6 @@ package regen
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"github.com/zach-klippenstein/goregen/util"
 	"math/rand"
 	"regexp"
 	"regexp/syntax"
@@ -44,7 +43,7 @@ func ExampleNewGenerator() {
 	pattern := "[ab]{5}"
 
 	generator, _ := NewGenerator(pattern, &GeneratorArgs{
-		Rng: rand.New(rand.NewSource(0)),
+		RngSource: rand.NewSource(0),
 	})
 
 	str := generator.Generate()
@@ -86,7 +85,7 @@ func TestNilArgValues(t *testing.T) {
 
 func TestEmpty(t *testing.T) {
 	args := &GeneratorArgs{
-		Rng: rand.New(rand.NewSource(0)),
+		RngSource: rand.NewSource(0),
 	}
 	AssertGenerates(t, args, "^$", "")
 }
@@ -169,7 +168,7 @@ func TestOr(t *testing.T) {
 func TestCapture(t *testing.T) {
 	t.Parallel()
 	args := &GeneratorArgs{
-		Rng: rand.New(rand.NewSource(0)),
+		RngSource: rand.NewSource(0),
 	}
 	AssertGenerates(t, args, "abc", "(abc)")
 	AssertGenerates(t, args, "", "()")
@@ -187,7 +186,7 @@ func TestRepeatHitsMin(t *testing.T) {
 	regexp := "a{0,3}"
 	var counts [4]int
 	args := &GeneratorArgs{
-		Rng: util.NewRand(0),
+		RngSource: rand.NewSource(0),
 	}
 	generator, _ := NewGenerator(regexp, args)
 
@@ -209,7 +208,7 @@ func TestRepeatHitsMax(t *testing.T) {
 	regexp := "a{0,3}"
 	var counts [4]int
 	args := &GeneratorArgs{
-		Rng: util.NewRand(0),
+		RngSource: rand.NewSource(0),
 	}
 	generator, _ := NewGenerator(regexp, args)
 

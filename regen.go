@@ -53,14 +53,22 @@ A generator is usually actually tree of generators, corresponding closely to the
 By default, generators run their children serially. In most cases, this is probably fine. However,
 it can be changed by passing a different GeneratorExecutor in GeneratorArgs. NewForkJoinExecutor(), for example, will cause each
 sub-generator to run in its own goroutine. This may improve or degrade performance, depending on the regular
-expression. The package includes benchmarks that show both improved and degraded performance in different cases.
+expression.
+
+A large bottleneck with running generators concurrently is actually the random source. Sources returned from
+rand.NewSource() are unsafe for concurrent use. The default source, used by the top-level functions in the rand
+package, is just a normal source guarded with a sync.Mutex. Ideally each goroutine would have exactly one source,
+but the Seed function (called by NewSource()) is actually far slower than using the lock, even under high contention
+(see the benchmarks at https://gist.github.com/zach-klippenstein/93b0d9f0499b1597754f for more information).
+These are the results of the benchmarks on my Macbook Pro:
+	BenchmarkReadFromUnlocked-4	200000000	 6.88 ns/op
+	BenchmarkReadFromLocked-4	 10000000	  137 ns/op
+	BenchmarkCreateUnlocked-4	   200000	18539 ns/op
+For ForkJoinExecutor, it's cheaper to just use a locked source.
 */
 package regen
 
 import (
-	"fmt"
-	"github.com/zach-klippenstein/goregen/util"
-	"math"
 	"math/rand"
 	"regexp/syntax"
 )
@@ -75,9 +83,9 @@ upper bound, use something like ".{1,256}" in your expression.
 const maxUpperBound = 4096
 
 type GeneratorArgs struct {
-	// Default is util.NewRand(rand.Int63()).
-	// This *must* be safe for concurrent use.
-	Rng *rand.Rand
+	// Default is rand.NewSource(rand.Int63()).
+	// Does not need to be safe for concurrent use.
+	RngSource rand.Source
 
 	// Default is 0 (syntax.POSIX).
 	Flags syntax.Flags
@@ -92,71 +100,35 @@ type Generator interface {
 	Generate() string
 }
 
-type aGenerator struct {
-	Name string
-	Call func() string
-}
-
-func (gen aGenerator) Generate() string {
-	return gen.Call()
-}
-
-func (gen aGenerator) String() string {
-	return gen.Name
-}
-
-// generatorFactory is a function that creates a random string generator from a regular expression AST.
-type generatorFactory func(r *syntax.Regexp, args *GeneratorArgs) (Generator, error)
-
-// Must be initialized in init() to avoid "initialization loop" compile error.
-var generatorFactories map[syntax.Op]generatorFactory
-
-func init() {
-	generatorFactories = map[syntax.Op]generatorFactory{
-		syntax.OpEmptyMatch:     opEmptyMatch,
-		syntax.OpLiteral:        opLiteral,
-		syntax.OpAnyCharNotNL:   opAnyCharNotNl,
-		syntax.OpAnyChar:        opAnyChar,
-		syntax.OpQuest:          opQuest,
-		syntax.OpStar:           opStar,
-		syntax.OpPlus:           opPlus,
-		syntax.OpRepeat:         opRepeat,
-		syntax.OpCharClass:      opCharClass,
-		syntax.OpConcat:         opConcat,
-		syntax.OpAlternate:      opAlternate,
-		syntax.OpCapture:        opCapture,
-		syntax.OpBeginLine:      noop,
-		syntax.OpEndLine:        noop,
-		syntax.OpBeginText:      noop,
-		syntax.OpEndText:        noop,
-		syntax.OpWordBoundary:   noop,
-		syntax.OpNoWordBoundary: noop,
-	}
+type externalGenerator struct {
+	GenArgs   *GeneratorArgs
+	Generator *internalGenerator
 }
 
 /*
-Generate a random string that matches the regular expression r.
+Generate a random string that matches the regular expression pattern.
 If args is nil, default values are used.
 
 This function does not seed the default RNG, so you must call rand.Seed() if you want
 non-deterministic strings.
 */
-func Generate(r string) (string, error) {
-	generator, err := NewGenerator(r, nil)
+func Generate(pattern string) (string, error) {
+	generator, err := NewGenerator(pattern, nil)
 	if err != nil {
 		return "", err
 	}
 	return generator.Generate(), nil
 }
 
-// NewGenerator creates a generator that returns random strings that match the regular expression in r.
+// NewGenerator creates a generator that returns random strings that match the regular expression in pattern.
 // If args is nil, default values are used.
-func NewGenerator(r string, args *GeneratorArgs) (generator Generator, err error) {
+func NewGenerator(pattern string, args *GeneratorArgs) (generator Generator, err error) {
 	if nil == args {
 		args = &GeneratorArgs{}
 	}
-	if nil == args.Rng {
-		args.Rng = util.NewRand(rand.Int63())
+
+	if nil == args.RngSource {
+		args.RngSource = rand.NewSource(rand.Int63())
 	}
 	if nil == args.Executor {
 		args.Executor = NewSerialExecutor()
@@ -168,186 +140,30 @@ func NewGenerator(r string, args *GeneratorArgs) (generator Generator, err error
 	}
 
 	var regexp *syntax.Regexp
-	regexp, err = syntax.Parse(r, args.Flags)
+	regexp, err = syntax.Parse(pattern, args.Flags)
 	if err != nil {
 		return
 	}
 
-	return newGenerator(regexp, args)
-}
-
-// Create a new generator for each expression in rs.
-func newGenerators(rs []*syntax.Regexp, args *GeneratorArgs) ([]Generator, error) {
-	generators := make([]Generator, len(rs), len(rs))
-	var err error
-
-	// create a generator for each alternate pattern
-	for i, subR := range rs {
-		generators[i], err = newGenerator(subR, args)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return generators, nil
-}
-
-// Create a new generator for r.
-func newGenerator(r *syntax.Regexp, args *GeneratorArgs) (generator Generator, err error) {
-	simplified := r.Simplify()
-
-	factory, ok := generatorFactories[simplified.Op]
-	if ok {
-		return factory(simplified, args)
-	}
-
-	return nil, fmt.Errorf("invalid generator pattern: /%s/ as /%s/\n%s",
-		r, simplified, util.InspectToStr(simplified))
-}
-
-// Generator that does nothing.
-func noop(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	return aGenerator{r.String(), func() string {
-		return ""
-	}}, nil
-}
-
-func opEmptyMatch(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpEmptyMatch)
-	return aGenerator{r.String(), func() string {
-		return ""
-	}}, nil
-}
-
-func opLiteral(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpLiteral)
-	return aGenerator{r.String(), func() string {
-		return util.RunesToString(r.Rune...)
-	}}, nil
-}
-
-func opAnyChar(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpAnyChar)
-	return aGenerator{r.String(), func() string {
-		return util.RunesToString(rune(args.Rng.Int31()))
-	}}, nil
-}
-
-func opAnyCharNotNl(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpAnyCharNotNL)
-	charClass := util.NewCharClass(1, rune(math.MaxInt32))
-	return createCharClassGenerator(r.String(), charClass, args)
-}
-
-func opQuest(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpQuest)
-	return createRepeatingGenerator(r, args, 0, 1)
-}
-
-func opStar(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpStar)
-	return createRepeatingGenerator(r, args, 0, -1)
-}
-
-func opPlus(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpPlus)
-	return createRepeatingGenerator(r, args, 1, -1)
-}
-
-func opRepeat(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpRepeat)
-	return createRepeatingGenerator(r, args, r.Min, r.Max)
-}
-
-// Handles syntax.ClassNL because the parser uses that flag to generate character
-// classes that respect it.
-func opCharClass(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpCharClass)
-	charClass := util.ParseCharClass(r.Rune)
-	return createCharClassGenerator(r.String(), charClass, args)
-}
-
-func opConcat(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpConcat)
-
-	generators, err := newGenerators(r.Sub, args)
+	var gen *internalGenerator
+	gen, err = newGenerator(regexp, args)
 	if err != nil {
-		return nil, generatorError(err, "error creating generators for concat pattern /%s/", r.String())
+		return
 	}
 
-	return aGenerator{r.String(), func() string {
-		return args.Executor.Execute(generators)
-	}}, nil
+	return &externalGenerator{
+		GenArgs:   args,
+		Generator: gen,
+	}, nil
 }
 
-func opAlternate(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpAlternate)
+func (gen *externalGenerator) Generate() string {
+	// Let the executor wrap the source if it needs to.
+	originalSrc := gen.GenArgs.RngSource
+	newSrc := gen.GenArgs.Executor.PrepareSource(originalSrc)
 
-	generators, err := newGenerators(r.Sub, args)
-	if err != nil {
-		return nil, generatorError(err, "error creating generators for alternate pattern /%s/", r.String())
+	runArgs := &runtimeArgs{
+		Rng: rand.New(newSrc),
 	}
-
-	var numGens int = len(generators)
-
-	return aGenerator{r.String(), func() string {
-		i := args.Rng.Intn(numGens)
-		generator := generators[i]
-		return generator.Generate()
-	}}, nil
-}
-
-func opCapture(r *syntax.Regexp, args *GeneratorArgs) (Generator, error) {
-	enforceOp(r, syntax.OpCapture)
-
-	if err := enforceSingleSub(r); err != nil {
-		return nil, err
-	}
-
-	return newGenerator(r.Sub[0], args)
-}
-
-// Panic if r.Op != op.
-func enforceOp(r *syntax.Regexp, op syntax.Op) {
-	if r.Op != op {
-		panic(fmt.Sprintf("invalid Op: expected %s, was %s", util.OpToString(op), util.OpToString(r.Op)))
-	}
-}
-
-// Return an error if r has 0 or more than 1 sub-expression.
-func enforceSingleSub(r *syntax.Regexp) error {
-	if len(r.Sub) != 1 {
-		return generatorError(nil,
-			"%s expected 1 sub-expression, but got %d: %s", util.OpToString(r.Op), len(r.Sub), r)
-	}
-	return nil
-}
-
-func createCharClassGenerator(name string, charClass *util.CharClass, args *GeneratorArgs) (Generator, error) {
-	return aGenerator{name, func() string {
-		i := args.Rng.Int31n(charClass.TotalSize)
-		r := charClass.GetRuneAt(i)
-		return util.RunesToString(r)
-	}}, nil
-}
-
-// Returns a generator that will run the generator for r's sub-expression [min, max] times.
-func createRepeatingGenerator(r *syntax.Regexp, args *GeneratorArgs, min int, max int) (Generator, error) {
-	if err := enforceSingleSub(r); err != nil {
-		return nil, err
-	}
-
-	generator, err := newGenerator(r.Sub[0], args)
-	if err != nil {
-		return nil, generatorError(err, "Failed to create generator for subexpression: /%s/", r)
-	}
-
-	if max < 0 {
-		max = maxUpperBound
-	}
-
-	return aGenerator{r.String(), func() string {
-		n := min + args.Rng.Intn(max-min+1)
-		return executeGeneratorRepeatedly(args.Executor, generator, n)
-	}}, nil
+	return gen.Generator.Generate(runArgs)
 }

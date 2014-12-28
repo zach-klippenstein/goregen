@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util
+package regen
 
 import (
 	"math/rand"
@@ -27,8 +27,8 @@ type lockedSource struct {
 	src rand.Source
 }
 
-func newLockedSource(seed int64) rand.Source {
-	return &lockedSource{src: rand.NewSource(seed)}
+func newLockedSource(src rand.Source) rand.Source {
+	return &lockedSource{src: src}
 }
 
 func (r *lockedSource) Int63() (n int64) {

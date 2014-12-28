@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util
+package regen
 
 import (
 	"fmt"
@@ -22,22 +22,22 @@ import (
 
 // CharClass represents a regular expression character class as a list of ranges.
 // The runes contained in the class can be accessed by index.
-type CharClass struct {
-	Ranges    []CharClassRange
+type tCharClass struct {
+	Ranges    []tCharClassRange
 	TotalSize int32
 }
 
 // CharClassRange represents a single range of characters in a character class.
-type CharClassRange struct {
+type tCharClassRange struct {
 	Start rune
 	Size  int32
 }
 
 // NewCharClass creates a character class with a single range.
-func NewCharClass(start rune, end rune) *CharClass {
-	charRange := NewCharClassRange(start, end)
-	return &CharClass{
-		Ranges:    []CharClassRange{charRange},
+func newCharClass(start rune, end rune) *tCharClass {
+	charRange := newCharClassRange(start, end)
+	return &tCharClass{
+		Ranges:    []tCharClassRange{charRange},
 		TotalSize: charRange.Size,
 	}
 }
@@ -54,10 +54,10 @@ e.g.
 
 "[^a-z]" -> "…" -> 0-(a-1), (z+1)-(max rune)
 */
-func ParseCharClass(runes []rune) *CharClass {
+func parseCharClass(runes []rune) *tCharClass {
 	var totalSize int32
 	numRanges := len(runes) / 2
-	ranges := make([]CharClassRange, numRanges, numRanges)
+	ranges := make([]tCharClassRange, numRanges, numRanges)
 
 	for i := 0; i < numRanges; i++ {
 		start := runes[i*2]
@@ -70,17 +70,17 @@ func ParseCharClass(runes []rune) *CharClass {
 			start = 1
 		}
 
-		r := NewCharClassRange(start, end)
+		r := newCharClassRange(start, end)
 
 		ranges[i] = r
 		totalSize += r.Size
 	}
 
-	return &CharClass{ranges, totalSize}
+	return &tCharClass{ranges, totalSize}
 }
 
 // GetRuneAt gets a rune from CharClass as a contiguous array of runes.
-func (class *CharClass) GetRuneAt(i int32) rune {
+func (class *tCharClass) GetRuneAt(i int32) rune {
 	defer func() {
 		if err := recover(); err != nil {
 			panic(fmt.Errorf("GetRuneAt panicked"))
@@ -96,11 +96,11 @@ func (class *CharClass) GetRuneAt(i int32) rune {
 	panic("index out of bounds")
 }
 
-func (class *CharClass) String() string {
+func (class *tCharClass) String() string {
 	return fmt.Sprintf("%s", class.Ranges)
 }
 
-func NewCharClassRange(start rune, end rune) CharClassRange {
+func newCharClassRange(start rune, end rune) tCharClassRange {
 	if start < 1 {
 		panic("char class range cannot contain runes less than 1")
 	}
@@ -111,16 +111,16 @@ func NewCharClassRange(start rune, end rune) CharClassRange {
 		panic("char class range size must be at least 1")
 	}
 
-	return CharClassRange{
+	return tCharClassRange{
 		Start: start,
 		Size:  size,
 	}
 }
 
-func (r CharClassRange) String() string {
+func (r tCharClassRange) String() string {
 	if r.Size == 1 {
-		return fmt.Sprintf("%s:1", RunesToString(r.Start))
+		return fmt.Sprintf("%s:1", runesToString(r.Start))
 	} else {
-		return fmt.Sprintf("%s-%s:%d", RunesToString(r.Start), RunesToString(r.Start+rune(r.Size-1)), r.Size)
+		return fmt.Sprintf("%s-%s:%d", runesToString(r.Start), runesToString(r.Start+rune(r.Size-1)), r.Size)
 	}
 }
