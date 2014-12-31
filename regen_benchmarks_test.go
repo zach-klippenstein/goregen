@@ -36,7 +36,12 @@ var rngSource = rand.NewSource(42)
 // Doesn't actually run the generators.
 func BenchmarkCreation(b *testing.B) {
 	// Create everything here to save allocations in the loop.
-	args := &GeneratorArgs{rngSource, 0, NewSerialExecutor()}
+	//args := &GeneratorArgs{rngSource, 0, NewSerialExecutor()}
+	args := &GeneratorArgs{
+		RngSource: rngSource,
+		Flags:     0,
+		Executor:  NewSerialExecutor(),
+	}
 
 	for i := 0; i < b.N; i++ {
 		NewGenerator(BigFancyRegexp, args)

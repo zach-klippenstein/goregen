@@ -18,7 +18,6 @@ package regen
 
 import (
 	"bytes"
-	"math/rand"
 	"runtime"
 	"strings"
 	"sync"
@@ -28,30 +27,26 @@ import (
 GeneratorExecutor runs a list of Generators and returns their results concatenated in order.
 */
 type GeneratorExecutor interface {
-	// Transforms the source, if necessary, and returns a source suitable for use by the executor.
-	PrepareSource(source rand.Source) rand.Source
-
 	// Executes a list of generators and returns their in-order, concatenated results.
-	Execute(args *runtimeArgs, generators []*internalGenerator) string
+	Execute(generators []*internalGenerator) string
 }
 
 type serialExecutor struct{}
 
 type forkJoinExecutor struct {
-	LockedRng *rand.Rand
 }
 
 var numCpu = runtime.NumCPU()
 
 // Execute executes a single generator n times.
-func executeGeneratorRepeatedly(executor GeneratorExecutor, args *runtimeArgs, generator *internalGenerator, n int) string {
+func executeGeneratorRepeatedly(executor GeneratorExecutor, generator *internalGenerator, n int) string {
 	generators := make([]*internalGenerator, n, n)
 
 	for i := 0; i < n; i++ {
 		generators[i] = generator
 	}
 
-	return executor.Execute(args, generators)
+	return executor.Execute(generators)
 }
 
 // NewSerialExecutor returns an executor that runs generators one after the other,
@@ -60,19 +55,15 @@ func NewSerialExecutor() GeneratorExecutor {
 	return serialExecutor{}
 }
 
-func (serialExecutor) Execute(args *runtimeArgs, generators []*internalGenerator) string {
+func (serialExecutor) Execute(generators []*internalGenerator) string {
 	var buffer bytes.Buffer
 	numGens := len(generators)
 
 	for i := 0; i < numGens; i++ {
-		buffer.WriteString(generators[i].Generate(args))
+		buffer.WriteString(generators[i].Generate())
 	}
 
 	return buffer.String()
-}
-
-func (serialExecutor) PrepareSource(source rand.Source) rand.Source {
-	return source
 }
 
 /*
@@ -86,25 +77,19 @@ func NewForkJoinExecutor() GeneratorExecutor {
 	return forkJoinExecutor{}
 }
 
-func (forkJoinExecutor) Execute(args *runtimeArgs, generators []*internalGenerator) string {
+func (forkJoinExecutor) Execute(generators []*internalGenerator) string {
 	numGens := len(generators)
 	results := make([]string, numGens, numGens)
 	var waiter sync.WaitGroup
 
 	waiter.Add(numGens)
 	for i := 0; i < numGens; i++ {
-		subArgs := *args
-
-		go func(i int, args *runtimeArgs) {
+		go func(i int) {
 			defer waiter.Done()
-			results[i] = generators[i].Generate(args)
-		}(i, &subArgs)
+			results[i] = generators[i].Generate()
+		}(i)
 	}
 	waiter.Wait()
 
 	return strings.Join(results, "")
-}
-
-func (forkJoinExecutor) PrepareSource(source rand.Source) rand.Source {
-	return newLockedSource(source)
 }

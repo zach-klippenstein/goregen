@@ -83,9 +83,12 @@ upper bound, use something like ".{1,256}" in your expression.
 const maxUpperBound = 4096
 
 type GeneratorArgs struct {
-	// Default is rand.NewSource(rand.Int63()).
-	// Does not need to be safe for concurrent use.
+	// Used to seed a custom RNG that is a lot faster than the default implementation.
+	// See http://vigna.di.unimi.it/ftp/papers/xorshift.pdf.
 	RngSource rand.Source
+
+	// Used by generators.
+	rng *rand.Rand
 
 	// Default is 0 (syntax.POSIX).
 	Flags syntax.Flags
@@ -98,11 +101,6 @@ type GeneratorArgs struct {
 // Generator generates random strings.
 type Generator interface {
 	Generate() string
-}
-
-type externalGenerator struct {
-	GenArgs   *GeneratorArgs
-	Generator *internalGenerator
 }
 
 /*
@@ -127,9 +125,14 @@ func NewGenerator(pattern string, args *GeneratorArgs) (generator Generator, err
 		args = &GeneratorArgs{}
 	}
 
+	var seed int64
 	if nil == args.RngSource {
-		args.RngSource = rand.NewSource(rand.Int63())
+		seed = rand.Int63()
+	} else {
+		seed = args.RngSource.Int63()
 	}
+	args.rng = rand.New(newXorShift64Source(seed))
+
 	if nil == args.Executor {
 		args.Executor = NewSerialExecutor()
 	}
@@ -151,19 +154,10 @@ func NewGenerator(pattern string, args *GeneratorArgs) (generator Generator, err
 		return
 	}
 
-	return &externalGenerator{
-		GenArgs:   args,
-		Generator: gen,
-	}, nil
-}
+	return gen, nil
 
-func (gen *externalGenerator) Generate() string {
-	// Let the executor wrap the source if it needs to.
-	originalSrc := gen.GenArgs.RngSource
-	newSrc := gen.GenArgs.Executor.PrepareSource(originalSrc)
-
-	runArgs := &runtimeArgs{
-		Rng: rand.New(newSrc),
-	}
-	return gen.Generator.Generate(runArgs)
+	// return &externalGenerator{
+	// 	GenArgs:   args,
+	// 	Generator: gen,
+	// }, nil
 }

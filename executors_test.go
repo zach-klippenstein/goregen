@@ -18,7 +18,6 @@ package regen
 
 import (
 	"github.com/stretchr/testify/assert"
-	"math/rand"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,7 +30,7 @@ const (
 )
 
 func NewMockGenerator(sleepTime time.Duration, n int) *internalGenerator {
-	return &internalGenerator{"mock generator", func(args *runtimeArgs) string {
+	return &internalGenerator{"mock generator", func() string {
 		time.Sleep(sleepTime)
 		return strconv.FormatInt(int64(n), 10)
 	}}
@@ -51,17 +50,11 @@ func CreateMocks(n int) []*internalGenerator {
 	return generators
 }
 
-func MockRuntimeArgs(executor GeneratorExecutor) *runtimeArgs {
-	return &runtimeArgs{
-		Rng: rand.New(rand.NewSource(1)),
-	}
-}
-
 func BenchmarkNoExecutorMultiGen(b *testing.B) {
 	generators := CreateMocks(NumMocks)
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < NumMocks; j++ {
-			generators[j].Generate(nil)
+			generators[j].Generate()
 		}
 	}
 }
@@ -70,14 +63,14 @@ func BenchmarkNoExecutor(b *testing.B) {
 	generator := NewMockGenerator(6*time.Millisecond, 0)
 
 	for i := 0; i < b.N; i++ {
-		generator.Generate(nil)
+		generator.Generate()
 	}
 }
 
 func TestSerialExecutor(t *testing.T) {
 	executor := NewSerialExecutor()
 	generators := CreateMocks(NumMocks)
-	results := executor.Execute(MockRuntimeArgs(executor), generators)
+	results := executor.Execute(generators)
 	AssertCorrectOrder(t, NumMocks, results)
 }
 
@@ -86,7 +79,7 @@ func BenchmarkSerialExecutorMultiGen(b *testing.B) {
 	generators := CreateMocks(NumMocks)
 
 	for i := 0; i < b.N; i++ {
-		executor.Execute(MockRuntimeArgs(executor), generators)
+		executor.Execute(generators)
 	}
 }
 
@@ -95,21 +88,21 @@ func BenchmarkSerialExecutor(b *testing.B) {
 	generator := NewMockGenerator(2*time.Millisecond, 0)
 
 	for i := 0; i < b.N; i++ {
-		executeGeneratorRepeatedly(executor, MockRuntimeArgs(executor), generator, NumMocks)
+		executeGeneratorRepeatedly(executor, generator, NumMocks)
 	}
 }
 
 func TestForkJoinExecutor(t *testing.T) {
 	executor := NewForkJoinExecutor()
 	generators := CreateMocks(NumMocks)
-	results := executor.Execute(MockRuntimeArgs(executor), generators)
+	results := executor.Execute(generators)
 	AssertCorrectOrder(t, NumMocks, results)
 }
 
 func TestForkJoinExecutorLarge(t *testing.T) {
 	executor := NewForkJoinExecutor()
 	generator := NewMockGenerator(1*time.Millisecond, 0)
-	results := executeGeneratorRepeatedly(executor, MockRuntimeArgs(executor), generator, NumMocksLarge)
+	results := executeGeneratorRepeatedly(executor, generator, NumMocksLarge)
 	assert.Len(t, results, NumMocksLarge)
 }
 
@@ -118,7 +111,7 @@ func BenchmarkForkJoinExecutorMultiGen(b *testing.B) {
 	generators := CreateMocks(NumMocks)
 
 	for i := 0; i < b.N; i++ {
-		executor.Execute(MockRuntimeArgs(executor), generators)
+		executor.Execute(generators)
 	}
 }
 
@@ -127,7 +120,7 @@ func BenchmarkForkJoinExecutor(b *testing.B) {
 	generator := NewMockGenerator(2*time.Millisecond, 0)
 
 	for i := 0; i < b.N; i++ {
-		executeGeneratorRepeatedly(executor, MockRuntimeArgs(executor), generator, NumMocks)
+		executeGeneratorRepeatedly(executor, generator, NumMocks)
 	}
 }
 

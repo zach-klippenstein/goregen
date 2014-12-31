@@ -19,7 +19,6 @@ package regen
 import (
 	"fmt"
 	"math"
-	"math/rand"
 	"regexp/syntax"
 )
 
@@ -52,13 +51,13 @@ func init() {
 	}
 }
 
-type runtimeArgs struct {
-	Rng *rand.Rand
+type internalGenerator struct {
+	Name         string
+	GenerateFunc func() string
 }
 
-type internalGenerator struct {
-	Name     string
-	Generate func(args *runtimeArgs) string
+func (gen *internalGenerator) Generate() string {
+	return gen.GenerateFunc()
 }
 
 func (gen *internalGenerator) String() string {
@@ -96,29 +95,29 @@ func newGenerator(regexp *syntax.Regexp, args *GeneratorArgs) (generator *intern
 
 // Generator that does nothing.
 func noop(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, error) {
-	return &internalGenerator{regexp.String(), func(args *runtimeArgs) string {
+	return &internalGenerator{regexp.String(), func() string {
 		return ""
 	}}, nil
 }
 
 func opEmptyMatch(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, error) {
 	enforceOp(regexp, syntax.OpEmptyMatch)
-	return &internalGenerator{regexp.String(), func(args *runtimeArgs) string {
+	return &internalGenerator{regexp.String(), func() string {
 		return ""
 	}}, nil
 }
 
 func opLiteral(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, error) {
 	enforceOp(regexp, syntax.OpLiteral)
-	return &internalGenerator{regexp.String(), func(args *runtimeArgs) string {
+	return &internalGenerator{regexp.String(), func() string {
 		return runesToString(regexp.Rune...)
 	}}, nil
 }
 
 func opAnyChar(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, error) {
 	enforceOp(regexp, syntax.OpAnyChar)
-	return &internalGenerator{regexp.String(), func(args *runtimeArgs) string {
-		return runesToString(rune(args.Rng.Int31()))
+	return &internalGenerator{regexp.String(), func() string {
+		return runesToString(rune(args.rng.Int31()))
 	}}, nil
 }
 
@@ -164,8 +163,8 @@ func opConcat(regexp *syntax.Regexp, genArgs *GeneratorArgs) (*internalGenerator
 		return nil, generatorError(err, "error creating generators for concat pattern /%s/", regexp)
 	}
 
-	return &internalGenerator{regexp.String(), func(runArgs *runtimeArgs) string {
-		return genArgs.Executor.Execute(runArgs, generators)
+	return &internalGenerator{regexp.String(), func() string {
+		return genArgs.Executor.Execute(generators)
 	}}, nil
 }
 
@@ -179,10 +178,10 @@ func opAlternate(regexp *syntax.Regexp, genArgs *GeneratorArgs) (*internalGenera
 
 	var numGens int = len(generators)
 
-	return &internalGenerator{regexp.String(), func(runArgs *runtimeArgs) string {
-		i := runArgs.Rng.Intn(numGens)
+	return &internalGenerator{regexp.String(), func() string {
+		i := genArgs.rng.Intn(numGens)
 		generator := generators[i]
-		return generator.Generate(runArgs)
+		return generator.Generate()
 	}}, nil
 }
 
@@ -213,8 +212,8 @@ func enforceSingleSub(regexp *syntax.Regexp) error {
 }
 
 func createCharClassGenerator(name string, charClass *tCharClass, args *GeneratorArgs) (*internalGenerator, error) {
-	return &internalGenerator{name, func(args *runtimeArgs) string {
-		i := args.Rng.Int31n(charClass.TotalSize)
+	return &internalGenerator{name, func() string {
+		i := args.rng.Int31n(charClass.TotalSize)
 		r := charClass.GetRuneAt(i)
 		return runesToString(r)
 	}}, nil
@@ -235,8 +234,8 @@ func createRepeatingGenerator(regexp *syntax.Regexp, genArgs *GeneratorArgs, min
 		max = maxUpperBound
 	}
 
-	return &internalGenerator{regexp.String(), func(runArgs *runtimeArgs) string {
-		n := min + runArgs.Rng.Intn(max-min+1)
-		return executeGeneratorRepeatedly(genArgs.Executor, runArgs, generator, n)
+	return &internalGenerator{regexp.String(), func() string {
+		n := min + genArgs.rng.Intn(max-min+1)
+		return executeGeneratorRepeatedly(genArgs.Executor, generator, n)
 	}}, nil
 }
