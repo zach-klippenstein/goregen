@@ -56,15 +56,10 @@ sub-generator to run in its own goroutine. This may improve or degrade performan
 expression.
 
 A large bottleneck with running generators concurrently is actually the random source. Sources returned from
-rand.NewSource() are unsafe for concurrent use. The default source, used by the top-level functions in the rand
-package, is just a normal source guarded with a sync.Mutex. Ideally each goroutine would have exactly one source,
-but the Seed function (called by NewSource()) is actually far slower than using the lock, even under high contention
-(see the benchmarks at https://gist.github.com/zach-klippenstein/93b0d9f0499b1597754f for more information).
-These are the results of the benchmarks on my Macbook Pro:
-	BenchmarkReadFromUnlocked-4	200000000	 6.88 ns/op
-	BenchmarkReadFromLocked-4	 10000000	  137 ns/op
-	BenchmarkCreateUnlocked-4	   200000	18539 ns/op
-For ForkJoinExecutor, it's cheaper to just use a locked source.
+rand.NewSource() are slow to seed, and not safe for concurrent source. Instead, the source passed in GeneratorArgs
+is used to seed an XorShift64 source from the paper at http://vigna.di.unimi.it/ftp/papers/xorshift.pdf. This source
+only uses a single variable, so can be used concurrently, and is much faster to seed than the default source. One
+source is created per call to NewGenerator. If no source is passed in, the default source is used to seed.
 */
 package regen
 
