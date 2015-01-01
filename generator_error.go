@@ -20,15 +20,16 @@ import (
 	"fmt"
 )
 
-type GeneratorError struct {
+// Error returned by a generatorFactory if the AST is invalid.
+type tGeneratorError struct {
 	ErrorStr string
 	Cause    error
 }
 
 func generatorError(cause error, format string, args ...interface{}) error {
-	return GeneratorError{fmt.Sprintf(format, args...), cause}
+	return &tGeneratorError{fmt.Sprintf(format, args...), cause}
 }
 
-func (err GeneratorError) Error() string {
+func (err *tGeneratorError) Error() string {
 	return fmt.Sprintf("%s\ncaused by %s", err.ErrorStr, err.Cause.Error())
 }

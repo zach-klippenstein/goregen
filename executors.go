@@ -18,7 +18,6 @@ package regen
 
 import (
 	"bytes"
-	"runtime"
 	"strings"
 	"sync"
 )
@@ -35,8 +34,6 @@ type serialExecutor struct{}
 
 type forkJoinExecutor struct {
 }
-
-var numCpu = runtime.NumCPU()
 
 // Execute executes a single generator n times.
 func executeGeneratorRepeatedly(executor GeneratorExecutor, generator *internalGenerator, n int) string {

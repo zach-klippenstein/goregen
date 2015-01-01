@@ -185,7 +185,7 @@ func opAlternate(regexp *syntax.Regexp, genArgs *GeneratorArgs) (*internalGenera
 		return nil, generatorError(err, "error creating generators for alternate pattern /%s/", regexp)
 	}
 
-	var numGens int = len(generators)
+	numGens := len(generators)
 
 	return &internalGenerator{regexp.String(), func() string {
 		i := genArgs.rng.Intn(numGens)
@@ -236,7 +236,7 @@ func createRepeatingGenerator(regexp *syntax.Regexp, genArgs *GeneratorArgs, min
 
 	generator, err := newGenerator(regexp.Sub[0], genArgs)
 	if err != nil {
-		return nil, generatorError(err, "Failed to create generator for subexpression: /%s/", regexp)
+		return nil, generatorError(err, "failed to create generator for subexpression: /%s/", regexp)
 	}
 
 	if max < 0 {

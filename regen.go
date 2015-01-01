@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 /*
-A library for generating random strings from regular expressions.
+Package regen is a library for generating random strings from regular expressions.
 The generated strings will match the expressions they were generated from.
 
 E.g.
@@ -68,13 +68,12 @@ import (
 	"regexp/syntax"
 )
 
+// GeneratorArgs are arguments passed to NewGenerator that control how generators
+// are created.
 type GeneratorArgs struct {
 	// Used to seed a custom RNG that is a lot faster than the default implementation.
 	// See http://vigna.di.unimi.it/ftp/papers/xorshift.pdf.
 	RngSource rand.Source
-
-	// Used by generators.
-	rng *rand.Rand
 
 	// Default is 0 (syntax.POSIX).
 	Flags syntax.Flags
@@ -82,6 +81,9 @@ type GeneratorArgs struct {
 	// Used by Generators that execute multiple sub-generators.
 	// Default is NewSerialExecutor().
 	Executor GeneratorExecutor
+
+	// Used by generators.
+	rng *rand.Rand
 }
 
 // Generator generates random strings.

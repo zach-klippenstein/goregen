@@ -81,12 +81,6 @@ func parseCharClass(runes []rune) *tCharClass {
 
 // GetRuneAt gets a rune from CharClass as a contiguous array of runes.
 func (class *tCharClass) GetRuneAt(i int32) rune {
-	defer func() {
-		if err := recover(); err != nil {
-			panic(fmt.Errorf("GetRuneAt panicked"))
-		}
-	}()
-
 	for _, r := range class.Ranges {
 		if i < r.Size {
 			return r.Start + rune(i)
@@ -120,7 +114,7 @@ func newCharClassRange(start rune, end rune) tCharClassRange {
 func (r tCharClassRange) String() string {
 	if r.Size == 1 {
 		return fmt.Sprintf("%s:1", runesToString(r.Start))
-	} else {
-		return fmt.Sprintf("%s-%s:%d", runesToString(r.Start), runesToString(r.Start+rune(r.Size-1)), r.Size)
 	}
+	return fmt.Sprintf("%s-%s:%d", runesToString(r.Start), runesToString(r.Start+rune(r.Size-1)), r.Size)
+
 }

@@ -30,7 +30,7 @@ const (
 	NumMocksLarge = 999
 )
 
-func NewMockGenerator(sleepTime time.Duration, n int) *internalGenerator {
+func newMockGenerator(sleepTime time.Duration, n int) *internalGenerator {
 	return &internalGenerator{"mock generator", func() string {
 		// Can't use time.Sleep():
 		// 999 sleeping goroutines can execute concurrently.
@@ -41,21 +41,21 @@ func NewMockGenerator(sleepTime time.Duration, n int) *internalGenerator {
 	}}
 }
 
-func NewMockGenerators(sleepTime time.Duration, n int) []*internalGenerator {
+func newMockGenerators(sleepTime time.Duration, n int) []*internalGenerator {
 	generators := make([]*internalGenerator, n, n)
 
 	for i := 0; i < n; i++ {
-		generators[i] = NewMockGenerator(sleepTime, i)
+		generators[i] = newMockGenerator(sleepTime, i)
 	}
 
 	return generators
 }
 
-func CreateMocks(n int) []*internalGenerator {
+func createMocks(n int) []*internalGenerator {
 	generators := make([]*internalGenerator, n, n)
 
 	for i := 0; i < n; i++ {
-		generators[i] = NewMockGenerator(
+		generators[i] = newMockGenerator(
 			// Sleep for time proportional to index to ensure that results come in
 			// out-of-order.
 			time.Duration(n-i)*time.Millisecond,
@@ -65,7 +65,7 @@ func CreateMocks(n int) []*internalGenerator {
 	return generators
 }
 
-func CreateNoopGenerators(n int) []*internalGenerator {
+func createNoopGenerators(n int) []*internalGenerator {
 	generators := make([]*internalGenerator, n, n)
 
 	for i := 0; i < n; i++ {
@@ -78,7 +78,7 @@ func CreateNoopGenerators(n int) []*internalGenerator {
 }
 
 func BenchmarkNoExecutorMultiGen(b *testing.B) {
-	generators := CreateMocks(NumMocks)
+	generators := createMocks(NumMocks)
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < NumMocks; j++ {
 			generators[j].Generate()
@@ -87,7 +87,7 @@ func BenchmarkNoExecutorMultiGen(b *testing.B) {
 }
 
 func BenchmarkNoExecutor(b *testing.B) {
-	generator := NewMockGenerator(6*time.Millisecond, 0)
+	generator := newMockGenerator(6*time.Millisecond, 0)
 
 	for i := 0; i < b.N; i++ {
 		generator.Generate()
@@ -96,14 +96,14 @@ func BenchmarkNoExecutor(b *testing.B) {
 
 func TestSerialExecutor(t *testing.T) {
 	executor := NewSerialExecutor()
-	generators := CreateMocks(NumMocks)
+	generators := createMocks(NumMocks)
 	results := executor.Execute(generators)
 	AssertCorrectOrder(t, NumMocks, results)
 }
 
 func BenchmarkSerialExecutorMultiGen(b *testing.B) {
 	executor := NewSerialExecutor()
-	generators := CreateMocks(NumMocks)
+	generators := createMocks(NumMocks)
 
 	for i := 0; i < b.N; i++ {
 		executor.Execute(generators)
@@ -112,7 +112,7 @@ func BenchmarkSerialExecutorMultiGen(b *testing.B) {
 
 func BenchmarkSerialExecutor(b *testing.B) {
 	executor := NewSerialExecutor()
-	generator := NewMockGenerator(2*time.Millisecond, 0)
+	generator := newMockGenerator(2*time.Millisecond, 0)
 
 	for i := 0; i < b.N; i++ {
 		executeGeneratorRepeatedly(executor, generator, NumMocks)
@@ -121,7 +121,7 @@ func BenchmarkSerialExecutor(b *testing.B) {
 
 func BenchmarkSerialNoop(b *testing.B) {
 	executor := NewSerialExecutor()
-	generators := CreateNoopGenerators(NumMocksLarge)
+	generators := createNoopGenerators(NumMocksLarge)
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
@@ -131,21 +131,21 @@ func BenchmarkSerialNoop(b *testing.B) {
 
 func TestForkJoinExecutor(t *testing.T) {
 	executor := NewForkJoinExecutor()
-	generators := CreateMocks(NumMocks)
+	generators := createMocks(NumMocks)
 	results := executor.Execute(generators)
 	AssertCorrectOrder(t, NumMocks, results)
 }
 
 func TestForkJoinExecutorLarge(t *testing.T) {
 	executor := NewForkJoinExecutor()
-	generator := NewMockGenerator(1*time.Millisecond, 0)
+	generator := newMockGenerator(1*time.Millisecond, 0)
 	results := executeGeneratorRepeatedly(executor, generator, NumMocksLarge)
 	assert.Len(t, results, NumMocksLarge)
 }
 
 func BenchmarkForkJoinExecutorMultiGen(b *testing.B) {
 	executor := NewForkJoinExecutor()
-	generators := CreateMocks(NumMocks)
+	generators := createMocks(NumMocks)
 
 	for i := 0; i < b.N; i++ {
 		executor.Execute(generators)
@@ -154,7 +154,7 @@ func BenchmarkForkJoinExecutorMultiGen(b *testing.B) {
 
 func BenchmarkForkJoinExecutor(b *testing.B) {
 	executor := NewForkJoinExecutor()
-	generator := NewMockGenerator(2*time.Millisecond, 0)
+	generator := newMockGenerator(2*time.Millisecond, 0)
 
 	for i := 0; i < b.N; i++ {
 		executeGeneratorRepeatedly(executor, generator, NumMocks)
@@ -163,7 +163,7 @@ func BenchmarkForkJoinExecutor(b *testing.B) {
 
 func BenchmarkForkJoinNoop(b *testing.B) {
 	executor := NewForkJoinExecutor()
-	generators := CreateNoopGenerators(NumMocksLarge)
+	generators := createNoopGenerators(NumMocksLarge)
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
