@@ -18,12 +18,13 @@ package regen
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"math/rand"
 	"regexp"
 	"regexp/syntax"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Each expression is generated and validated this many times.

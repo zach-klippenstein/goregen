@@ -17,8 +17,9 @@ limitations under the License.
 package regen
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestXorShift64(t *testing.T) {

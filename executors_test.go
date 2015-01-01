@@ -17,11 +17,12 @@ limitations under the License.
 package regen
 
 import (
-	"github.com/stretchr/testify/assert"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const (
