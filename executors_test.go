@@ -31,9 +31,23 @@ const (
 
 func NewMockGenerator(sleepTime time.Duration, n int) *internalGenerator {
 	return &internalGenerator{"mock generator", func() string {
-		time.Sleep(sleepTime)
+		// Can't use time.Sleep():
+		// 999 sleeping goroutines can execute concurrently.
+		// 999 busy goroutines can only execute one-per-CPU.
+		// This affects the benchmarks in a significant way.
+		busySleep(sleepTime)
 		return strconv.FormatInt(int64(n), 10)
 	}}
+}
+
+func NewMockGenerators(sleepTime time.Duration, n int) []*internalGenerator {
+	generators := make([]*internalGenerator, n, n)
+
+	for i := 0; i < n; i++ {
+		generators[i] = NewMockGenerator(sleepTime, i)
+	}
+
+	return generators
 }
 
 func CreateMocks(n int) []*internalGenerator {
@@ -45,6 +59,18 @@ func CreateMocks(n int) []*internalGenerator {
 			// out-of-order.
 			time.Duration(n-i)*time.Millisecond,
 			i)
+	}
+
+	return generators
+}
+
+func CreateNoopGenerators(n int) []*internalGenerator {
+	generators := make([]*internalGenerator, n, n)
+
+	for i := 0; i < n; i++ {
+		generators[i] = &internalGenerator{"noop", func() string {
+			return ""
+		}}
 	}
 
 	return generators
@@ -92,6 +118,16 @@ func BenchmarkSerialExecutor(b *testing.B) {
 	}
 }
 
+func BenchmarkSerialNoop(b *testing.B) {
+	executor := NewSerialExecutor()
+	generators := CreateNoopGenerators(NumMocksLarge)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		executor.Execute(generators)
+	}
+}
+
 func TestForkJoinExecutor(t *testing.T) {
 	executor := NewForkJoinExecutor()
 	generators := CreateMocks(NumMocks)
@@ -124,6 +160,16 @@ func BenchmarkForkJoinExecutor(b *testing.B) {
 	}
 }
 
+func BenchmarkForkJoinNoop(b *testing.B) {
+	executor := NewForkJoinExecutor()
+	generators := CreateNoopGenerators(NumMocksLarge)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		executor.Execute(generators)
+	}
+}
+
 func AssertCorrectOrder(t *testing.T, n int, results string) {
 	nums := make([]string, n, n)
 	for i := 0; i < n; i++ {
@@ -131,4 +177,11 @@ func AssertCorrectOrder(t *testing.T, n int, results string) {
 	}
 
 	assert.Equal(t, strings.Join(nums, ""), results)
+}
+
+// Spins the CPU for a duration.
+func busySleep(dur time.Duration) {
+	start := time.Now()
+	for time.Now().Sub(start) < dur {
+	}
 }

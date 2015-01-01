@@ -22,10 +22,25 @@ import (
 )
 
 func TestXorShift64(t *testing.T) {
+	t.Parallel()
 	source := newXorShift64Source(1)
 
-	for i := 0; i < 999; i++ {
+	for i := 0; i < SampleSize; i++ {
 		val := source.Int63()
 		require.True(t, val >= 0, "Source returned %d < 0", val)
 	}
+}
+
+func TestZeroSeed(t *testing.T) {
+	t.Parallel()
+	source := newXorShift64Source(0)
+	nonZeroCount := 0
+
+	for i := 0; i < SampleSize; i++ {
+		if source.Int63() != 0 {
+			nonZeroCount++
+		}
+	}
+
+	require.True(t, nonZeroCount > 0, "Source generated only zeros")
 }

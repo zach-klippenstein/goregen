@@ -22,6 +22,15 @@ import (
 	"regexp/syntax"
 )
 
+/*
+maxUpperBound is the number of instances to generate for unbounded repeat expressions.
+E.g. ".*" will generate no more than maxUpperBound characters.
+
+This value could change at any time, and should not be relied upon. If you care about the
+upper bound, use something like ".{1,256}" in your expression.
+*/
+const maxUpperBound = 4096
+
 // generatorFactory is a function that creates a random string generator from a regular expression AST.
 type generatorFactory func(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, error)
 

@@ -27,6 +27,11 @@ type xorShift64Source struct {
 }
 
 func newXorShift64Source(seed int64) rand.Source {
+	// a zero seed will only generate zeros.
+	if seed == 0 {
+		seed = 1
+	}
+
 	return &xorShift64Source{uint64(seed)}
 }
 

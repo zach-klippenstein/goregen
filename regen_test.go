@@ -19,6 +19,7 @@ package regen
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"math/rand"
 	"regexp"
 	"regexp/syntax"
@@ -156,11 +157,12 @@ func TestNegativeCharClass(t *testing.T) {
 	)
 }
 
-func TestOr(t *testing.T) {
+func TestAlternate(t *testing.T) {
 	t.Parallel()
 	AssertGeneratesAndMatches(t, nil,
 		"a|b",
 		"abc|def|ghi",
+		"[ab]|[cd]",
 		"foo|bar|baz", // rewrites to foo|ba[rz]
 	)
 }
@@ -179,6 +181,64 @@ func TestConcat(t *testing.T) {
 	AssertGeneratesAndMatches(t, nil,
 		"[ab][cd]",
 	)
+}
+
+func TestUnboundedRepeat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("unbounded repeat can take ~15 seconds, skipping in short mode")
+	}
+
+	t.Parallel()
+	args := &GeneratorArgs{RngSource: rand.NewSource(0)}
+	AssertGeneratesAndMatches(t, args, `a{1,}`)
+}
+
+func BenchmarkLargeRepeatCreateSerial(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		NewGenerator(`a{999}`, &GeneratorArgs{
+			RngSource: rand.NewSource(0),
+			Executor:  NewSerialExecutor(),
+		})
+	}
+}
+
+func BenchmarkLargeRepeatGenerateSerial(b *testing.B) {
+	generator, err := NewGenerator(`a{999}`, &GeneratorArgs{
+		RngSource: rand.NewSource(0),
+		Executor:  NewSerialExecutor(),
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		generator.Generate()
+	}
+}
+
+func BenchmarkLargeRepeatCreateForkJoin(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		NewGenerator(`a{999}`, &GeneratorArgs{
+			RngSource: rand.NewSource(0),
+			Executor:  NewForkJoinExecutor(),
+		})
+	}
+}
+
+func BenchmarkLargeRepeatGenerateForkJoin(b *testing.B) {
+	generator, err := NewGenerator(`a{999}`, &GeneratorArgs{
+		RngSource: rand.NewSource(0),
+		Executor:  NewForkJoinExecutor(),
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		generator.Generate()
+	}
 }
 
 func TestRepeatHitsMin(t *testing.T) {
@@ -242,6 +302,20 @@ func TestAsciiCharClasses(t *testing.T) {
 		"[[:upper:]]",
 		"[[:word:]]",
 		"[[:xdigit:]]",
+		"[[:^alnum:]]",
+		"[[:^alpha:]]",
+		"[[:^ascii:]]",
+		"[[:^blank:]]",
+		"[[:^cntrl:]]",
+		"[[:^digit:]]",
+		"[[:^graph:]]",
+		"[[:^lower:]]",
+		"[[:^print:]]",
+		"[[:^punct:]]",
+		"[[:^space:]]",
+		"[[:^upper:]]",
+		"[[:^word:]]",
+		"[[:^xdigit:]]",
 	)
 }
 
@@ -253,10 +327,10 @@ func TestPerlCharClasses(t *testing.T) {
 
 	AssertGeneratesAndMatches(t, args,
 		`\d`,
-		`\D`,
 		`\s`,
-		`\S`,
 		`\w`,
+		`\D`,
+		`\S`,
 		`\W`,
 	)
 }
@@ -269,6 +343,18 @@ func TestUnicodeGroupsNotSupported(t *testing.T) {
 
 	_, err := NewGenerator("", args)
 	assert.Error(t, err)
+}
+
+func TestBeginEndLine(t *testing.T) {
+	t.Parallel()
+	args := &GeneratorArgs{
+		RngSource: rand.NewSource(0),
+		Flags:     0,
+	}
+
+	AssertGenerates(t, args, `abc`, `^abc$`)
+	AssertGenerates(t, args, `abc`, `$abc^`)
+	AssertGenerates(t, args, `abc`, `a^b$c`)
 }
 
 func AssertGeneratesAndMatches(t *testing.T, args *GeneratorArgs, patterns ...string) {
@@ -292,6 +378,6 @@ func AssertGeneratesTimes(t *testing.T, args *GeneratorArgs, expectedPattern str
 		if err != nil {
 			panic(err)
 		}
-		assert.True(t, matched, "string generated from pattern /%s/ did not match /%s/", pattern, expectedPattern)
+		require.True(t, matched, "string generated from pattern /%s/ did not match /%s/: `%s`", pattern, expectedPattern, result)
 	}
 }
