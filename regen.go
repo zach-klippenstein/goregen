@@ -47,7 +47,7 @@ The Perl character class flag is supported, and required if the pattern contains
 
 Unicode groups are not supported at this time. Support may be added in the future.
 
-Multi-threading
+Running Large Generators Concurrently
 
 A generator is usually actually tree of generators, corresponding closely to the AST of the expression.
 By default, generators run their children serially. In most cases, this is probably fine. However,
