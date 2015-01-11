@@ -23,8 +23,8 @@ import (
 	"regexp/syntax"
 	"testing"
 
+	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Each expression is generated and validated this many times.
@@ -73,125 +73,231 @@ func ExampleNewGenerator_perl() {
 	// Matches!
 }
 
-func TestNilArgs(t *testing.T) {
-	generator, err := NewGenerator("", nil)
-	assert.NotNil(t, generator)
-	assert.Nil(t, err)
-}
-
-func TestNilArgValues(t *testing.T) {
-	generator, err := NewGenerator("", &GeneratorArgs{})
-	assert.NotNil(t, generator)
-	assert.Nil(t, err)
-}
-
-func TestEmpty(t *testing.T) {
-	args := &GeneratorArgs{
-		RngSource: rand.NewSource(0),
-	}
-	AssertGenerates(t, args, "^$", "")
-}
-
-func TestLiteralSingleChar(t *testing.T) {
+func TestRegen(t *testing.T) {
 	t.Parallel()
-	AssertGeneratesAndMatches(t, nil,
-		"a",
-		"abc",
-	)
-}
 
-func TestDotNotNl(t *testing.T) {
-	t.Parallel()
-	AssertGeneratesAndMatches(t, nil, ".")
+	Convey("Regen", t, func() {
 
-	generator, _ := NewGenerator(".", nil)
+		Convey("NewGenerator", func() {
 
-	// Not a very strong assertion, but not sure how to do better. Exploring the entire
-	// generation space (2^32) takes far too long for a unit test.
-	for i := 0; i < SampleSize; i++ {
-		assert.NotEqual(t, "\n", generator.Generate())
-	}
-}
+			Convey("Handles nil GeneratorArgs", func() {
+				generator, err := NewGenerator("", nil)
+				So(generator, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+			})
 
-func TestQuestionMark(t *testing.T) {
-	t.Parallel()
-	AssertGeneratesAndMatches(t, nil,
-		"a?",
-		"(abc)?",
-		"[ab]?",
-		".?",
-	)
-}
+			Convey("Handles empty GeneratorArgs", func() {
+				generator, err := NewGenerator("", &GeneratorArgs{})
+				So(generator, ShouldNotBeNil)
+				So(err, ShouldBeNil)
+			})
+		})
 
-func TestPlus(t *testing.T) {
-	t.Parallel()
-	AssertGeneratesAndMatches(t, nil, "a+")
-}
+		Convey("Empty", func() {
+			args := &GeneratorArgs{
+				RngSource: rand.NewSource(0),
+			}
+			ConveyGeneratesStringMatching(args, "", "^$")
+		})
 
-func TestStar(t *testing.T) {
-	t.Parallel()
-	AssertGeneratesAndMatches(t, nil, "a*")
-}
+		Convey("Literals", func() {
+			ConveyGeneratesStringMatchingItself(nil,
+				"a",
+				"abc",
+			)
+		})
 
-func TestCharClassNotNl(t *testing.T) {
-	t.Parallel()
-	AssertGeneratesAndMatches(t, nil,
-		"[a]",
-		"[abc]",
-		"[a-d]",
-		"[ac]",
-		"[0-9]",
-		"[a-z0-9]",
-	)
+		Convey("DotNotNl", func() {
+			ConveyGeneratesStringMatchingItself(nil, ".")
 
-	// Try to narrow down the generation space. Still not a very strong assertion.
-	generator, _ := NewGenerator("[^a-zA-Z0-9]", nil)
-	for i := 0; i < SampleSize; i++ {
-		assert.NotEqual(t, "\n", generator.Generate())
-	}
-}
+			Convey("No newlines are generated", func() {
+				generator, _ := NewGenerator(".", nil)
 
-func TestNegativeCharClass(t *testing.T) {
-	t.Parallel()
-	AssertGeneratesAndMatches(t, nil,
-		"[^a-zA-Z0-9]",
-	)
-}
+				// Not a very strong assertion, but not sure how to do better. Exploring the entire
+				// generation space (2^32) takes far too long for a unit test.
+				for i := 0; i < SampleSize; i++ {
+					So(generator.Generate(), ShouldNotContainSubstring, "\n")
+				}
+			})
+		})
 
-func TestAlternate(t *testing.T) {
-	t.Parallel()
-	AssertGeneratesAndMatches(t, nil,
-		"a|b",
-		"abc|def|ghi",
-		"[ab]|[cd]",
-		"foo|bar|baz", // rewrites to foo|ba[rz]
-	)
-}
+		Convey("String start/end", func() {
+			args := &GeneratorArgs{
+				RngSource: rand.NewSource(0),
+				Flags:     0,
+			}
 
-func TestCapture(t *testing.T) {
-	t.Parallel()
-	args := &GeneratorArgs{
-		RngSource: rand.NewSource(0),
-	}
-	AssertGenerates(t, args, "abc", "(abc)")
-	AssertGenerates(t, args, "", "()")
-}
+			ConveyGeneratesStringMatching(args, `^abc$`, `^abc$`)
+			ConveyGeneratesStringMatching(args, `$abc^`, `^abc$`)
+			ConveyGeneratesStringMatching(args, `a^b$c`, `^abc$`)
+		})
 
-func TestConcat(t *testing.T) {
-	t.Parallel()
-	AssertGeneratesAndMatches(t, nil,
-		"[ab][cd]",
-	)
-}
+		Convey("QuestionMark", func() {
+			ConveyGeneratesStringMatchingItself(nil,
+				"a?",
+				"(abc)?",
+				"[ab]?",
+				".?")
+		})
 
-func TestUnboundedRepeat(t *testing.T) {
-	if testing.Short() {
-		t.Skip("unbounded repeat can take ~15 seconds, skipping in short mode")
-	}
+		Convey("Plus", func() {
+			ConveyGeneratesStringMatchingItself(nil, "a+")
+		})
 
-	t.Parallel()
-	args := &GeneratorArgs{RngSource: rand.NewSource(0)}
-	AssertGeneratesAndMatches(t, args, `a{1,}`)
+		Convey("Star", func() {
+			ConveyGeneratesStringMatchingItself(nil, "a*")
+		})
+
+		Convey("CharClassNotNl", func() {
+			ConveyGeneratesStringMatchingItself(nil,
+				"[a]",
+				"[abc]",
+				"[a-d]",
+				"[ac]",
+				"[0-9]",
+				"[a-z0-9]",
+			)
+
+			Convey("No newlines are generated", func() {
+				// Try to narrow down the generation space. Still not a very strong assertion.
+				generator, _ := NewGenerator("[^a-zA-Z0-9]", nil)
+				for i := 0; i < SampleSize; i++ {
+					assert.NotEqual(t, "\n", generator.Generate())
+				}
+			})
+		})
+
+		Convey("NegativeCharClass", func() {
+			ConveyGeneratesStringMatchingItself(nil, "[^a-zA-Z0-9]")
+		})
+
+		Convey("Alternate", func() {
+			ConveyGeneratesStringMatchingItself(nil,
+				"a|b",
+				"abc|def|ghi",
+				"[ab]|[cd]",
+				"foo|bar|baz", // rewrites to foo|ba[rz]
+			)
+		})
+
+		Convey("Capture", func() {
+			ConveyGeneratesStringMatching(nil, "(abc)", "^abc$")
+			ConveyGeneratesStringMatching(nil, "()", "^$")
+		})
+
+		Convey("Concat", func() {
+			ConveyGeneratesStringMatchingItself(nil, "[ab][cd]")
+		})
+
+		Convey("Repeat", func() {
+
+			Convey("Unbounded", func() {
+				ConveyGeneratesStringMatchingItself(nil, `a{1,}`)
+			})
+
+			Convey("HitsMin", func() {
+				regexp := "a{0,3}"
+				var counts [4]int
+				args := &GeneratorArgs{
+					RngSource: rand.NewSource(0),
+				}
+				generator, _ := NewGenerator(regexp, args)
+
+				for i := 0; i < SampleSize; i++ {
+					str := generator.Generate()
+					counts[len(str)]++
+				}
+
+				Println("counts:")
+				for i, count := range counts {
+					Printf("%d: %d\n", i, count)
+				}
+
+				So(counts[0], ShouldBeGreaterThan, 0)
+			})
+
+			Convey("HitsMax", func() {
+				regexp := "a{0,3}"
+				var counts [4]int
+				args := &GeneratorArgs{
+					RngSource: rand.NewSource(0),
+				}
+				generator, _ := NewGenerator(regexp, args)
+
+				for i := 0; i < SampleSize; i++ {
+					str := generator.Generate()
+					counts[len(str)]++
+				}
+
+				Println("counts:")
+				for i, count := range counts {
+					Printf("%d: %d\n", i, count)
+				}
+
+				So(counts[3], ShouldBeGreaterThan, 0)
+			})
+		})
+
+		Convey("CharClasses", func() {
+
+			Convey("Ascii", func() {
+				ConveyGeneratesStringMatchingItself(nil,
+					"[[:alnum:]]",
+					"[[:alpha:]]",
+					"[[:ascii:]]",
+					"[[:blank:]]",
+					"[[:cntrl:]]",
+					"[[:digit:]]",
+					"[[:graph:]]",
+					"[[:lower:]]",
+					"[[:print:]]",
+					"[[:punct:]]",
+					"[[:space:]]",
+					"[[:upper:]]",
+					"[[:word:]]",
+					"[[:xdigit:]]",
+					"[[:^alnum:]]",
+					"[[:^alpha:]]",
+					"[[:^ascii:]]",
+					"[[:^blank:]]",
+					"[[:^cntrl:]]",
+					"[[:^digit:]]",
+					"[[:^graph:]]",
+					"[[:^lower:]]",
+					"[[:^print:]]",
+					"[[:^punct:]]",
+					"[[:^space:]]",
+					"[[:^upper:]]",
+					"[[:^word:]]",
+					"[[:^xdigit:]]",
+				)
+			})
+
+			Convey("Perl", func() {
+				args := &GeneratorArgs{
+					Flags: syntax.Perl,
+				}
+
+				ConveyGeneratesStringMatchingItself(args,
+					`\d`,
+					`\s`,
+					`\w`,
+					`\D`,
+					`\S`,
+					`\W`,
+				)
+			})
+
+			Convey("Unicode groups not supported", func() {
+				args := &GeneratorArgs{
+					Flags: syntax.UnicodeGroups,
+				}
+
+				_, err := NewGenerator("", args)
+				So(err, ShouldNotBeNil)
+			})
+		})
+	})
 }
 
 func BenchmarkLargeRepeatCreateSerial(b *testing.B) {
@@ -242,136 +348,34 @@ func BenchmarkLargeRepeatGenerateForkJoin(b *testing.B) {
 	}
 }
 
-func TestRepeatHitsMin(t *testing.T) {
-	t.Parallel()
-	regexp := "a{0,3}"
-	var counts [4]int
-	args := &GeneratorArgs{
-		RngSource: rand.NewSource(0),
-	}
-	generator, _ := NewGenerator(regexp, args)
-
-	for i := 0; i < SampleSize; i++ {
-		str := generator.Generate()
-		counts[len(str)]++
-	}
-
-	t.Log("counts:")
-	for i, count := range counts {
-		t.Logf("%d: %d", i, count)
-	}
-
-	assert.True(t, counts[0] > 0)
-}
-
-func TestRepeatHitsMax(t *testing.T) {
-	t.Parallel()
-	regexp := "a{0,3}"
-	var counts [4]int
-	args := &GeneratorArgs{
-		RngSource: rand.NewSource(0),
-	}
-	generator, _ := NewGenerator(regexp, args)
-
-	for i := 0; i < SampleSize; i++ {
-		str := generator.Generate()
-		counts[len(str)]++
-	}
-
-	t.Log("counts:")
-	for i, count := range counts {
-		t.Logf("%d: %d", i, count)
-	}
-
-	assert.True(t, counts[3] > 0)
-}
-
-func TestAsciiCharClasses(t *testing.T) {
-	t.Parallel()
-	AssertGeneratesAndMatches(t, nil,
-		"[[:alnum:]]",
-		"[[:alpha:]]",
-		"[[:ascii:]]",
-		"[[:blank:]]",
-		"[[:cntrl:]]",
-		"[[:digit:]]",
-		"[[:graph:]]",
-		"[[:lower:]]",
-		"[[:print:]]",
-		"[[:punct:]]",
-		"[[:space:]]",
-		"[[:upper:]]",
-		"[[:word:]]",
-		"[[:xdigit:]]",
-		"[[:^alnum:]]",
-		"[[:^alpha:]]",
-		"[[:^ascii:]]",
-		"[[:^blank:]]",
-		"[[:^cntrl:]]",
-		"[[:^digit:]]",
-		"[[:^graph:]]",
-		"[[:^lower:]]",
-		"[[:^print:]]",
-		"[[:^punct:]]",
-		"[[:^space:]]",
-		"[[:^upper:]]",
-		"[[:^word:]]",
-		"[[:^xdigit:]]",
-	)
-}
-
-func TestPerlCharClasses(t *testing.T) {
-	t.Parallel()
-	args := &GeneratorArgs{
-		Flags: syntax.Perl,
-	}
-
-	AssertGeneratesAndMatches(t, args,
-		`\d`,
-		`\s`,
-		`\w`,
-		`\D`,
-		`\S`,
-		`\W`,
-	)
-}
-
-func TestUnicodeGroupsNotSupported(t *testing.T) {
-	t.Parallel()
-	args := &GeneratorArgs{
-		Flags: syntax.UnicodeGroups,
-	}
-
-	_, err := NewGenerator("", args)
-	assert.Error(t, err)
-}
-
-func TestBeginEndLine(t *testing.T) {
-	t.Parallel()
-	args := &GeneratorArgs{
-		RngSource: rand.NewSource(0),
-		Flags:     0,
-	}
-
-	AssertGenerates(t, args, `abc`, `^abc$`)
-	AssertGenerates(t, args, `abc`, `$abc^`)
-	AssertGenerates(t, args, `abc`, `a^b$c`)
-}
-
-func AssertGeneratesAndMatches(t *testing.T, args *GeneratorArgs, patterns ...string) {
+func ConveyGeneratesStringMatchingItself(args *GeneratorArgs, patterns ...string) {
 	for _, pattern := range patterns {
-		t.Logf("testing pattern /%s/", pattern)
-		AssertGenerates(t, args, pattern, pattern)
+		Convey(fmt.Sprintf("String generated from /%s/ matches itself", pattern), func() {
+			So(pattern, ShouldGenerateStringMatching, pattern, args)
+		})
 	}
 }
 
-func AssertGenerates(t *testing.T, args *GeneratorArgs, expectedPattern string, pattern string) {
-	AssertGeneratesTimes(t, args, expectedPattern, pattern, SampleSize)
+func ConveyGeneratesStringMatching(args *GeneratorArgs, pattern string, expectedPattern string) {
+	Convey(fmt.Sprintf("String generated from /%s/ matches /%s/", pattern, expectedPattern), func() {
+		So(pattern, ShouldGenerateStringMatching, expectedPattern, args)
+	})
 }
 
-func AssertGeneratesTimes(t *testing.T, args *GeneratorArgs, expectedPattern string, pattern string, times int) {
+func ShouldGenerateStringMatching(actual interface{}, expected ...interface{}) string {
+	return ShouldGenerateStringMatchingTimes(actual, expected[0], expected[1], SampleSize)
+}
+
+func ShouldGenerateStringMatchingTimes(actual interface{}, expected ...interface{}) string {
+	pattern := actual.(string)
+	expectedPattern := expected[0].(string)
+	args := expected[1].(*GeneratorArgs)
+	times := expected[2].(int)
+
 	generator, err := NewGenerator(pattern, args)
-	assert.NoError(t, err)
+	if err != nil {
+		panic(err)
+	}
 
 	for i := 0; i < times; i++ {
 		result := generator.Generate()
@@ -379,6 +383,11 @@ func AssertGeneratesTimes(t *testing.T, args *GeneratorArgs, expectedPattern str
 		if err != nil {
 			panic(err)
 		}
-		require.True(t, matched, "string generated from pattern /%s/ did not match /%s/: `%s`", pattern, expectedPattern, result)
+		if !matched {
+			return fmt.Sprintf("string “%s” generated from /%s/ did not match /%s/.",
+				result, pattern, expectedPattern)
+		}
 	}
+
+	return ""
 }

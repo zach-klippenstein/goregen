@@ -22,13 +22,43 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 const (
 	NumMocks      = 3
 	NumMocksLarge = 999
 )
+
+func TestExecutors(t *testing.T) {
+	t.Parallel()
+
+	Convey("SerialExecutor", t, func() {
+		Convey("Returns results in correct order", func() {
+			executor := NewSerialExecutor()
+			generators := createMocks(NumMocks)
+			results := executor.Execute(generators)
+			So(results, ShouldBeInCorrectOrderUpTo, NumMocks)
+		})
+	})
+
+	Convey("ForkJoinExecutor", t, func() {
+		Convey("Returns results in correct order", func() {
+			executor := NewForkJoinExecutor()
+			generators := createMocks(NumMocks)
+			results := executor.Execute(generators)
+			So(results, ShouldBeInCorrectOrderUpTo, NumMocks)
+		})
+
+		Convey("Works with many repetitions", func() {
+			executor := NewForkJoinExecutor()
+			generator := newMockGenerator(1*time.Millisecond, 0)
+			results := executeGeneratorRepeatedly(executor, generator, NumMocksLarge)
+
+			So(len(results), ShouldEqual, NumMocksLarge)
+		})
+	})
+}
 
 func newMockGenerator(sleepTime time.Duration, n int) *internalGenerator {
 	return &internalGenerator{"mock generator", func() string {
@@ -94,13 +124,6 @@ func BenchmarkNoExecutor(b *testing.B) {
 	}
 }
 
-func TestSerialExecutor(t *testing.T) {
-	executor := NewSerialExecutor()
-	generators := createMocks(NumMocks)
-	results := executor.Execute(generators)
-	AssertCorrectOrder(t, NumMocks, results)
-}
-
 func BenchmarkSerialExecutorMultiGen(b *testing.B) {
 	executor := NewSerialExecutor()
 	generators := createMocks(NumMocks)
@@ -127,20 +150,6 @@ func BenchmarkSerialNoop(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		executor.Execute(generators)
 	}
-}
-
-func TestForkJoinExecutor(t *testing.T) {
-	executor := NewForkJoinExecutor()
-	generators := createMocks(NumMocks)
-	results := executor.Execute(generators)
-	AssertCorrectOrder(t, NumMocks, results)
-}
-
-func TestForkJoinExecutorLarge(t *testing.T) {
-	executor := NewForkJoinExecutor()
-	generator := newMockGenerator(1*time.Millisecond, 0)
-	results := executeGeneratorRepeatedly(executor, generator, NumMocksLarge)
-	assert.Len(t, results, NumMocksLarge)
 }
 
 func BenchmarkForkJoinExecutorMultiGen(b *testing.B) {
@@ -171,13 +180,17 @@ func BenchmarkForkJoinNoop(b *testing.B) {
 	}
 }
 
-func AssertCorrectOrder(t *testing.T, n int, results string) {
+func ShouldBeInCorrectOrderUpTo(actual interface{}, expected ...interface{}) string {
+	n := expected[0].(int)
+	results := actual.(string)
+
 	nums := make([]string, n, n)
+
 	for i := 0; i < n; i++ {
 		nums[i] = strconv.FormatInt(int64(i), 10)
 	}
 
-	assert.Equal(t, strings.Join(nums, ""), results)
+	return ShouldEqual(results, strings.Join(nums, ""))
 }
 
 // Spins the CPU for a duration.

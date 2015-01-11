@@ -64,7 +64,7 @@ func BenchmarkSerialGeneration(b *testing.B) {
 	}
 }
 
-func BenchmarkParallelGeneration(b *testing.B) {
+func BenchmarkForkJoinGeneration(b *testing.B) {
 	args := &GeneratorArgs{
 		RngSource: rngSource,
 		Executor:  NewForkJoinExecutor(),

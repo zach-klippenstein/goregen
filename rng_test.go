@@ -19,29 +19,29 @@ package regen
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestXorShift64(t *testing.T) {
-	t.Parallel()
-	source := newXorShift64Source(1)
+	Convey("Int63 should never return negative numbers.", t, func() {
+		source := newXorShift64Source(1)
+		for i := 0; i < SampleSize; i++ {
+			val := source.Int63()
 
-	for i := 0; i < SampleSize; i++ {
-		val := source.Int63()
-		require.True(t, val >= 0, "Source returned %d < 0", val)
-	}
-}
-
-func TestZeroSeed(t *testing.T) {
-	t.Parallel()
-	source := newXorShift64Source(0)
-	nonZeroCount := 0
-
-	for i := 0; i < SampleSize; i++ {
-		if source.Int63() != 0 {
-			nonZeroCount++
+			So(val, ShouldBeGreaterThanOrEqualTo, 0)
 		}
-	}
+	})
 
-	require.True(t, nonZeroCount > 0, "Source generated only zeros")
+	Convey("Should not only return zeros", t, func() {
+		source := newXorShift64Source(0)
+		nonZeroCount := 0
+
+		for i := 0; i < SampleSize; i++ {
+			if source.Int63() != 0 {
+				nonZeroCount++
+			}
+		}
+
+		So(nonZeroCount, ShouldBeGreaterThan, 0)
+	})
 }
