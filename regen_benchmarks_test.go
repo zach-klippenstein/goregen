@@ -40,7 +40,6 @@ func BenchmarkCreation(b *testing.B) {
 	args := &GeneratorArgs{
 		RngSource: rngSource,
 		Flags:     0,
-		Executor:  NewSerialExecutor(),
 	}
 
 	for i := 0; i < b.N; i++ {
@@ -48,26 +47,9 @@ func BenchmarkCreation(b *testing.B) {
 	}
 }
 
-func BenchmarkSerialGeneration(b *testing.B) {
+func BenchmarkGeneration(b *testing.B) {
 	args := &GeneratorArgs{
 		RngSource: rngSource,
-		Executor:  NewSerialExecutor(),
-	}
-	generator, err := NewGenerator(BigFancyRegexp, args)
-	if err != nil {
-		panic(err)
-	}
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		generator.Generate()
-	}
-}
-
-func BenchmarkForkJoinGeneration(b *testing.B) {
-	args := &GeneratorArgs{
-		RngSource: rngSource,
-		Executor:  NewForkJoinExecutor(),
 	}
 	generator, err := NewGenerator(BigFancyRegexp, args)
 	if err != nil {

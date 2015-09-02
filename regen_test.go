@@ -37,6 +37,7 @@ func ExampleGenerate() {
 	if matched, _ := regexp.MatchString(pattern, str); matched {
 		fmt.Println("Matches!")
 	}
+
 	// Output:
 	// Matches!
 }
@@ -53,6 +54,7 @@ func ExampleNewGenerator() {
 	if matched, _ := regexp.MatchString(pattern, str); matched {
 		fmt.Println("Matches!")
 	}
+
 	// Output:
 	// Matches!
 }
@@ -304,7 +306,6 @@ func BenchmarkLargeRepeatCreateSerial(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		NewGenerator(`a{999}`, &GeneratorArgs{
 			RngSource: rand.NewSource(0),
-			Executor:  NewSerialExecutor(),
 		})
 	}
 }
@@ -312,31 +313,6 @@ func BenchmarkLargeRepeatCreateSerial(b *testing.B) {
 func BenchmarkLargeRepeatGenerateSerial(b *testing.B) {
 	generator, err := NewGenerator(`a{999}`, &GeneratorArgs{
 		RngSource: rand.NewSource(0),
-		Executor:  NewSerialExecutor(),
-	})
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		generator.Generate()
-	}
-}
-
-func BenchmarkLargeRepeatCreateForkJoin(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		NewGenerator(`a{999}`, &GeneratorArgs{
-			RngSource: rand.NewSource(0),
-			Executor:  NewForkJoinExecutor(),
-		})
-	}
-}
-
-func BenchmarkLargeRepeatGenerateForkJoin(b *testing.B) {
-	generator, err := NewGenerator(`a{999}`, &GeneratorArgs{
-		RngSource: rand.NewSource(0),
-		Executor:  NewForkJoinExecutor(),
 	})
 	if err != nil {
 		b.Fatal(err)

@@ -17,6 +17,7 @@ limitations under the License.
 package regen
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"regexp/syntax"
@@ -173,7 +174,11 @@ func opConcat(regexp *syntax.Regexp, genArgs *GeneratorArgs) (*internalGenerator
 	}
 
 	return &internalGenerator{regexp.String(), func() string {
-		return genArgs.Executor.Execute(generators)
+		var result bytes.Buffer
+		for _, generator := range generators {
+			result.WriteString(generator.Generate())
+		}
+		return result.String()
 	}}, nil
 }
 
@@ -245,6 +250,11 @@ func createRepeatingGenerator(regexp *syntax.Regexp, genArgs *GeneratorArgs, min
 
 	return &internalGenerator{regexp.String(), func() string {
 		n := min + genArgs.rng.Intn(max-min+1)
-		return executeGeneratorRepeatedly(genArgs.Executor, generator, n)
+
+		var result bytes.Buffer
+		for i := 0; i < n; i++ {
+			result.WriteString(generator.Generate())
+		}
+		return result.String()
 	}}, nil
 }

@@ -47,19 +47,20 @@ The Perl character class flag is supported, and required if the pattern contains
 
 Unicode groups are not supported at this time. Support may be added in the future.
 
-Running Large Generators Concurrently
+Concurrent Use
 
-A generator is usually actually tree of generators, corresponding closely to the AST of the expression.
-By default, generators run their children serially. In most cases, this is probably fine. However,
-it can be changed by passing a different GeneratorExecutor in GeneratorArgs. NewForkJoinExecutor(), for example, will cause each
-sub-generator to run in its own goroutine. This may improve or degrade performance, depending on the regular
-expression.
+A generator can safely be used from multiple goroutines without locking.
 
-A large bottleneck with running generators concurrently is actually the random source. Sources returned from
-rand.NewSource() are slow to seed, and not safe for concurrent source. Instead, the source passed in GeneratorArgs
-is used to seed an XorShift64 source from the paper at http://vigna.di.unimi.it/ftp/papers/xorshift.pdf. This source
-only uses a single variable, so can be used concurrently, and is much faster to seed than the default source. One
+A large bottleneck with running generators concurrently is actually the entropy source. Sources returned from
+rand.NewSource() are slow to seed, and not safe for concurrent use. Instead, the source passed in GeneratorArgs
+is used to seed an XorShift64 source (algorithm from the paper at http://vigna.di.unimi.it/ftp/papers/xorshift.pdf).
+This source only uses a single variable internally, and is much faster to seed than the default source. One
 source is created per call to NewGenerator. If no source is passed in, the default source is used to seed.
+
+The source is not locked and does not use atomic operations, so there is a chance that multiple goroutines using
+the same source may get the same output. While obviously not cryptographically secure, I think the simplicity and performance
+benefit outweighs the risk of collisions. If you really care about preventing this, the solution is simple: don't
+call a single Generator from multiple goroutines.
 */
 package regen
 
@@ -77,10 +78,6 @@ type GeneratorArgs struct {
 
 	// Default is 0 (syntax.POSIX).
 	Flags syntax.Flags
-
-	// Used by Generators that execute multiple sub-generators.
-	// Default is NewSerialExecutor().
-	Executor GeneratorExecutor
 
 	// Used by generators.
 	rng *rand.Rand
@@ -121,10 +118,6 @@ func NewGenerator(pattern string, args *GeneratorArgs) (generator Generator, err
 	}
 	args.rng = rand.New(newXorShift64Source(seed))
 
-	if nil == args.Executor {
-		args.Executor = NewSerialExecutor()
-	}
-
 	// unicode groups only allowed with Perl
 	if (args.Flags&syntax.UnicodeGroups) == syntax.UnicodeGroups && (args.Flags&syntax.Perl) != syntax.Perl {
 		return nil, generatorError(nil, "UnicodeGroups not supported")
@@ -143,9 +136,4 @@ func NewGenerator(pattern string, args *GeneratorArgs) (generator Generator, err
 	}
 
 	return gen, nil
-
-	// return &externalGenerator{
-	// 	GenArgs:   args,
-	// 	Generator: gen,
-	// }, nil
 }
