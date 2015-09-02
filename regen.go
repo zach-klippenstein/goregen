@@ -16,7 +16,8 @@ limitations under the License.
 
 /*
 Package regen is a library for generating random strings from regular expressions.
-The generated strings will match the expressions they were generated from.
+The generated strings will match the expressions they were generated from. Similar
+to Ruby's randexp library.
 
 E.g.
 	regen.Generate("[a-z0-9]{1,64}")
