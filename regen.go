@@ -61,6 +61,33 @@ The source is not locked and does not use atomic operations, so there is a chanc
 the same source may get the same output. While obviously not cryptographically secure, I think the simplicity and performance
 benefit outweighs the risk of collisions. If you really care about preventing this, the solution is simple: don't
 call a single Generator from multiple goroutines.
+
+Benchmarks
+
+Benchmarks are included for creating and running generators for limited-length,
+complex regexes, and simple, highly-repetitive regexes.
+
+	go test -bench .
+
+The complex benchmarks generate fake HTTP messages with the following regex:
+	POST (/[-a-zA-Z0-9_.]{3,12}){3,6}
+	Content-Length: [0-9]{2,3}
+	X-Auth-Token: [a-zA-Z0-9+/]{64}
+
+	([A-Za-z0-9+/]{64}
+	){3,15}[A-Za-z0-9+/]{60}([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)
+
+The repetitive benchmarks use the regex
+	a{999}
+
+See regen_benchmarks_test.go for more information.
+
+On my mid-2014 MacBook Pro (2.6GHz Intel Core i5, 8GB 1600MHz DDR3),
+the results of running the benchmarks with minimal load are:
+	BenchmarkComplexCreation-4                       200	   8322160 ns/op
+	BenchmarkComplexGeneration-4                   10000	    153625 ns/op
+	BenchmarkLargeRepeatCreateSerial-4  	        3000	    411772 ns/op
+	BenchmarkLargeRepeatGenerateSerial-4	        5000	    291416 ns/op
 */
 package regen
 

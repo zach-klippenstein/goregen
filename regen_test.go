@@ -302,28 +302,6 @@ func TestRegen(t *testing.T) {
 	})
 }
 
-func BenchmarkLargeRepeatCreateSerial(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		NewGenerator(`a{999}`, &GeneratorArgs{
-			RngSource: rand.NewSource(0),
-		})
-	}
-}
-
-func BenchmarkLargeRepeatGenerateSerial(b *testing.B) {
-	generator, err := NewGenerator(`a{999}`, &GeneratorArgs{
-		RngSource: rand.NewSource(0),
-	})
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		generator.Generate()
-	}
-}
-
 func ConveyGeneratesStringMatchingItself(args *GeneratorArgs, patterns ...string) {
 	for _, pattern := range patterns {
 		Convey(fmt.Sprintf("String generated from /%s/ matches itself", pattern), func() {

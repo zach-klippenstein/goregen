@@ -34,7 +34,7 @@ var rngSource = rand.NewSource(42)
 
 // Benchmarks the code that creates generators.
 // Doesn't actually run the generators.
-func BenchmarkCreation(b *testing.B) {
+func BenchmarkComplexCreation(b *testing.B) {
 	// Create everything here to save allocations in the loop.
 	//args := &GeneratorArgs{rngSource, 0, NewSerialExecutor()}
 	args := &GeneratorArgs{
@@ -47,13 +47,35 @@ func BenchmarkCreation(b *testing.B) {
 	}
 }
 
-func BenchmarkGeneration(b *testing.B) {
+func BenchmarkLargeRepeatCreateSerial(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		NewGenerator(`a{999}`, &GeneratorArgs{
+			RngSource: rand.NewSource(0),
+		})
+	}
+}
+
+func BenchmarkComplexGeneration(b *testing.B) {
 	args := &GeneratorArgs{
 		RngSource: rngSource,
 	}
 	generator, err := NewGenerator(BigFancyRegexp, args)
 	if err != nil {
 		panic(err)
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		generator.Generate()
+	}
+}
+
+func BenchmarkLargeRepeatGenerateSerial(b *testing.B) {
+	generator, err := NewGenerator(`a{999}`, &GeneratorArgs{
+		RngSource: rand.NewSource(0),
+	})
+	if err != nil {
+		b.Fatal(err)
 	}
 	b.ResetTimer()
 
