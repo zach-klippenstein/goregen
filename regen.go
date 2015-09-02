@@ -116,7 +116,8 @@ func NewGenerator(pattern string, args *GeneratorArgs) (generator Generator, err
 	} else {
 		seed = args.RngSource.Int63()
 	}
-	args.rng = rand.New(newXorShift64Source(seed))
+	rngSource := xorShift64Source(seed)
+	args.rng = rand.New(&rngSource)
 
 	// unicode groups only allowed with Perl
 	if (args.Flags&syntax.UnicodeGroups) == syntax.UnicodeGroups && (args.Flags&syntax.Perl) != syntax.Perl {

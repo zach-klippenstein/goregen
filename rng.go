@@ -16,35 +16,33 @@ limitations under the License.
 
 package regen
 
-import "math/rand"
+/*
+The default Source implementation is very slow to seed. Replaced with a
+64-bit xor-shift source from http://vigna.di.unimi.it/ftp/papers/xorshift.pdf.
+This source seeds very quickly, and only uses a single variable, so concurrent
+modification by multiple goroutines is possible.
 
-// The default Source implementation is very slow to seed. Replaced with a
-// 64-bit xor-shift source from http://vigna.di.unimi.it/ftp/papers/xorshift.pdf.
-// This source seeds very quickly, and only uses a single variable, so concurrent
-// modification by multiple goroutines is possible.
-type xorShift64Source struct {
-	state uint64
-}
+To create a seeded source:
+	randSource := xorShift64Source(mySeed)
 
-func newXorShift64Source(seed int64) rand.Source {
-	// a zero seed will only generate zeros.
-	if seed == 0 {
-		seed = 1
-	}
-
-	return &xorShift64Source{uint64(seed)}
-}
+To create a source with the default seed:
+	var randSource xorShift64Source
+*/
+type xorShift64Source uint64
 
 func (src *xorShift64Source) Seed(seed int64) {
-	src.state = uint64(seed)
+	*src = xorShift64Source(seed)
 }
 
 func (src *xorShift64Source) Int63() int64 {
-	x := src.state
-	x ^= x >> 12 // a
-	x ^= x << 25 // b
-	x ^= x >> 27 // c
-	src.state = x
+	// A zero seed will only generate zeros.
+	if *src == 0 {
+		*src = 1
+	}
 
-	return int64((x * 2685821657736338717) >> 1)
+	*src ^= *src >> 12 // a
+	*src ^= *src << 25 // b
+	*src ^= *src >> 27 // c
+
+	return int64((*src * 2685821657736338717) >> 1)
 }

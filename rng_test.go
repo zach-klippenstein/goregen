@@ -24,7 +24,7 @@ import (
 
 func TestXorShift64(t *testing.T) {
 	Convey("Int63 should never return negative numbers.", t, func() {
-		source := newXorShift64Source(1)
+		source := xorShift64Source(1)
 		for i := 0; i < SampleSize; i++ {
 			val := source.Int63()
 
@@ -33,7 +33,7 @@ func TestXorShift64(t *testing.T) {
 	})
 
 	Convey("Should not only return zeros", t, func() {
-		source := newXorShift64Source(0)
+		source := xorShift64Source(0)
 		nonZeroCount := 0
 
 		for i := 0; i < SampleSize; i++ {
