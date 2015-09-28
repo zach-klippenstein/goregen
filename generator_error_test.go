@@ -17,22 +17,23 @@ limitations under the License.
 package regen
 
 import (
-	"fmt"
+	"errors"
+	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
-// Error returned by a generatorFactory if the AST is invalid.
-type tGeneratorError struct {
-	ErrorStr string
-	Cause    error
-}
+func TestGeneratorError(t *testing.T) {
+	Convey("GeneratorError", t, func() {
 
-func generatorError(cause error, format string, args ...interface{}) error {
-	return &tGeneratorError{fmt.Sprintf(format, args...), cause}
-}
+		Convey("Handles nil cause", func() {
+			err := generatorError(nil, "msg")
+			So(err.Error(), ShouldEqual, "msg")
+		})
 
-func (err *tGeneratorError) Error() string {
-	if err.Cause != nil {
-		return fmt.Sprintf("%s\ncaused by %s", err.ErrorStr, err.Cause.Error())
-	}
-	return err.ErrorStr
+		Convey("Formats", func() {
+			err := generatorError(errors.New("cause"), "msg %s", "arg")
+			So(err.Error(), ShouldEqual, "msg arg\ncaused by cause")
+		})
+	})
 }
