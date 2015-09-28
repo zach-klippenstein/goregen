@@ -97,6 +97,9 @@ import (
 	"regexp/syntax"
 )
 
+// DefaultMaxUnboundedRepeatCount is default value for MaxUnboundedRepeatCount.
+const DefaultMaxUnboundedRepeatCount = 4096
+
 // GeneratorArgs are arguments passed to NewGenerator that control how generators
 // are created.
 type GeneratorArgs struct {
@@ -106,6 +109,13 @@ type GeneratorArgs struct {
 
 	// Default is 0 (syntax.POSIX).
 	Flags syntax.Flags
+
+	// Maximum number of instances to generate for unbounded repeat expressions (e.g. ".*" and "{1,}")
+	// Default is DefaultMaxUnboundedRepeatCount.
+	MaxUnboundedRepeatCount uint
+	// Minimum number of instances to generate for unbounded repeat expressions (e.g. ".*")
+	// Default is 0.
+	MinUnboundedRepeatCount uint
 
 	// Used by generators.
 	rng *rand.Rand
@@ -133,9 +143,12 @@ func Generate(pattern string) (string, error) {
 
 // NewGenerator creates a generator that returns random strings that match the regular expression in pattern.
 // If args is nil, default values are used.
-func NewGenerator(pattern string, args *GeneratorArgs) (generator Generator, err error) {
-	if nil == args {
-		args = &GeneratorArgs{}
+func NewGenerator(pattern string, inputArgs *GeneratorArgs) (generator Generator, err error) {
+	args := GeneratorArgs{}
+
+	// Copy inputArgs so the caller can't change them.
+	if inputArgs != nil {
+		args = *inputArgs
 	}
 
 	var seed int64
@@ -152,6 +165,10 @@ func NewGenerator(pattern string, args *GeneratorArgs) (generator Generator, err
 		return nil, generatorError(nil, "UnicodeGroups not supported")
 	}
 
+	if args.MaxUnboundedRepeatCount < 1 {
+		args.MaxUnboundedRepeatCount = DefaultMaxUnboundedRepeatCount
+	}
+
 	var regexp *syntax.Regexp
 	regexp, err = syntax.Parse(pattern, args.Flags)
 	if err != nil {
@@ -159,7 +176,7 @@ func NewGenerator(pattern string, args *GeneratorArgs) (generator Generator, err
 	}
 
 	var gen *internalGenerator
-	gen, err = newGenerator(regexp, args)
+	gen, err = newGenerator(regexp, &args)
 	if err != nil {
 		return
 	}
