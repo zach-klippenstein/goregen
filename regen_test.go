@@ -23,12 +23,19 @@ import (
 	"regexp/syntax"
 	"testing"
 
+	"github.com/google/gxui/math"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
 )
 
-// Each expression is generated and validated this many times.
-const SampleSize = 999
+const (
+	// Each expression is generated and validated this many times.
+	SampleSize = 999
+
+	// Arbitrary limit in the standard package.
+	// See https://golang.org/src/regexp/syntax/parse.go?s=18885:18935#L796
+	MaxSupportedRepeatCount = 1000
+)
 
 func ExampleGenerate() {
 	pattern := "[ab]{5}"
@@ -148,6 +155,53 @@ func TestRegen(t *testing.T) {
 
 		Convey("Star", func() {
 			ConveyGeneratesStringMatchingItself(nil, "a*")
+
+			Convey("HitsDefaultMin", func() {
+				regexp := "a*"
+				args := &GeneratorArgs{
+					RngSource: rand.NewSource(0),
+				}
+				counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
+
+				So(counts[0], ShouldBeGreaterThan, 0)
+			})
+
+			Convey("HitsCustomMin", func() {
+				regexp := "a*"
+				args := &GeneratorArgs{
+					RngSource:               rand.NewSource(0),
+					MinUnboundedRepeatCount: 200,
+				}
+				counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
+
+				So(counts[200], ShouldBeGreaterThan, 0)
+				for i := 0; i < 200; i++ {
+					So(counts[i], ShouldEqual, 0)
+				}
+			})
+
+			Convey("HitsDefaultMax", func() {
+				regexp := "a*"
+				args := &GeneratorArgs{
+					RngSource: rand.NewSource(0),
+				}
+				counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
+
+				So(len(counts), ShouldEqual, DefaultMaxUnboundedRepeatCount+1)
+				So(counts[DefaultMaxUnboundedRepeatCount], ShouldBeGreaterThan, 0)
+			})
+
+			Convey("HitsCustomMax", func() {
+				regexp := "a*"
+				args := &GeneratorArgs{
+					RngSource:               rand.NewSource(0),
+					MaxUnboundedRepeatCount: 200,
+				}
+				counts := generateLenHistogram(regexp, 200, args)
+
+				So(len(counts), ShouldEqual, 200+1)
+				So(counts[200], ShouldBeGreaterThan, 0)
+			})
 		})
 
 		Convey("CharClassNotNl", func() {
@@ -195,48 +249,69 @@ func TestRegen(t *testing.T) {
 
 			Convey("Unbounded", func() {
 				ConveyGeneratesStringMatchingItself(nil, `a{1,}`)
+
+				Convey("HitsDefaultMax", func() {
+					regexp := "a{0,}"
+					args := &GeneratorArgs{
+						RngSource: rand.NewSource(0),
+					}
+					counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
+
+					So(len(counts), ShouldEqual, DefaultMaxUnboundedRepeatCount+1)
+					So(counts[DefaultMaxUnboundedRepeatCount], ShouldBeGreaterThan, 0)
+				})
+
+				Convey("HitsCustomMax", func() {
+					regexp := "a{0,}"
+					args := &GeneratorArgs{
+						RngSource:               rand.NewSource(0),
+						MaxUnboundedRepeatCount: 200,
+					}
+					counts := generateLenHistogram(regexp, 200, args)
+
+					So(len(counts), ShouldEqual, 200+1)
+					So(counts[200], ShouldBeGreaterThan, 0)
+				})
 			})
 
 			Convey("HitsMin", func() {
 				regexp := "a{0,3}"
-				var counts [4]int
 				args := &GeneratorArgs{
 					RngSource: rand.NewSource(0),
 				}
-				generator, _ := NewGenerator(regexp, args)
+				counts := generateLenHistogram(regexp, 3, args)
 
-				for i := 0; i < SampleSize; i++ {
-					str := generator.Generate()
-					counts[len(str)]++
-				}
-
-				Println("counts:")
-				for i, count := range counts {
-					Printf("%d: %d\n", i, count)
-				}
-
+				So(len(counts), ShouldEqual, 3+1)
 				So(counts[0], ShouldBeGreaterThan, 0)
 			})
 
 			Convey("HitsMax", func() {
 				regexp := "a{0,3}"
-				var counts [4]int
 				args := &GeneratorArgs{
 					RngSource: rand.NewSource(0),
 				}
-				generator, _ := NewGenerator(regexp, args)
+				counts := generateLenHistogram(regexp, 3, args)
 
-				for i := 0; i < SampleSize; i++ {
-					str := generator.Generate()
-					counts[len(str)]++
-				}
-
-				Println("counts:")
-				for i, count := range counts {
-					Printf("%d: %d\n", i, count)
-				}
-
+				So(len(counts), ShouldEqual, 3+1)
 				So(counts[3], ShouldBeGreaterThan, 0)
+			})
+
+			Convey("IsWithinBounds", func() {
+				regexp := "a{5,10}"
+				args := &GeneratorArgs{
+					RngSource: rand.NewSource(0),
+				}
+				counts := generateLenHistogram(regexp, 10, args)
+
+				So(len(counts), ShouldEqual, 11)
+
+				for i := 0; i < 11; i++ {
+					if i < 5 {
+						So(counts[i], ShouldEqual, 0)
+					} else if i < 11 {
+						So(counts[i], ShouldBeGreaterThan, 0)
+					}
+				}
 			})
 		})
 
@@ -344,4 +419,37 @@ func ShouldGenerateStringMatchingTimes(actual interface{}, expected ...interface
 	}
 
 	return ""
+}
+
+func generateLenHistogram(regexp string, maxLen int, args *GeneratorArgs) (counts []int) {
+	generator, err := NewGenerator(regexp, args)
+	if err != nil {
+		panic(err)
+	}
+
+	iterations := math.Max(maxLen*4, SampleSize)
+
+	for i := 0; i < iterations; i++ {
+		str := generator.Generate()
+
+		// Grow the slice if necessary.
+		if len(str) >= len(counts) {
+			newCounts := make([]int, len(str)+1)
+			copy(newCounts, counts)
+			counts = newCounts
+		}
+
+		counts[len(str)]++
+	}
+
+	Println("counts:")
+	for i, count := range counts {
+		if i < 10 || i > maxLen-10 {
+			Printf("%d: %d\n", i, count)
+		} else if i == 11 {
+			Println("…")
+		}
+	}
+
+	return
 }

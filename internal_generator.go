@@ -23,20 +23,13 @@ import (
 	"regexp/syntax"
 )
 
-/*
-maxUpperBound is the number of instances to generate for unbounded repeat expressions.
-E.g. ".*" will generate no more than maxUpperBound characters.
-
-This value could change at any time, and should not be relied upon. If you care about the
-upper bound, use something like ".{1,256}" in your expression.
-*/
-const maxUpperBound = 4096
-
 // generatorFactory is a function that creates a random string generator from a regular expression AST.
 type generatorFactory func(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, error)
 
 // Must be initialized in init() to avoid "initialization loop" compile error.
 var generatorFactories map[syntax.Op]generatorFactory
+
+const noBound = -1
 
 func init() {
 	generatorFactories = map[syntax.Op]generatorFactory{
@@ -144,12 +137,12 @@ func opQuest(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, er
 
 func opStar(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, error) {
 	enforceOp(regexp, syntax.OpStar)
-	return createRepeatingGenerator(regexp, args, 0, -1)
+	return createRepeatingGenerator(regexp, args, noBound, noBound)
 }
 
 func opPlus(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, error) {
 	enforceOp(regexp, syntax.OpPlus)
-	return createRepeatingGenerator(regexp, args, 1, -1)
+	return createRepeatingGenerator(regexp, args, 1, noBound)
 }
 
 func opRepeat(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, error) {
@@ -234,7 +227,7 @@ func createCharClassGenerator(name string, charClass *tCharClass, args *Generato
 }
 
 // Returns a generator that will run the generator for r's sub-expression [min, max] times.
-func createRepeatingGenerator(regexp *syntax.Regexp, genArgs *GeneratorArgs, min int, max int) (*internalGenerator, error) {
+func createRepeatingGenerator(regexp *syntax.Regexp, genArgs *GeneratorArgs, min, max int) (*internalGenerator, error) {
 	if err := enforceSingleSub(regexp); err != nil {
 		return nil, err
 	}
@@ -244,8 +237,11 @@ func createRepeatingGenerator(regexp *syntax.Regexp, genArgs *GeneratorArgs, min
 		return nil, generatorError(err, "failed to create generator for subexpression: /%s/", regexp)
 	}
 
-	if max < 0 {
-		max = maxUpperBound
+	if min == noBound {
+		min = int(genArgs.MinUnboundedRepeatCount)
+	}
+	if max == noBound {
+		max = int(genArgs.MaxUnboundedRepeatCount)
 	}
 
 	return &internalGenerator{regexp.String(), func() string {
