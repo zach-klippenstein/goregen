@@ -82,106 +82,226 @@ func ExampleNewGenerator_perl() {
 	// Matches!
 }
 
-func TestRegen(t *testing.T) {
+func TestNewGenerator(t *testing.T) {
 	t.Parallel()
 
-	Convey("Regen", t, func() {
+	Convey("NewGenerator", t, func() {
 
-		Convey("NewGenerator", func() {
-
-			Convey("Handles nil GeneratorArgs", func() {
-				generator, err := NewGenerator("", nil)
-				So(generator, ShouldNotBeNil)
-				So(err, ShouldBeNil)
-			})
-
-			Convey("Handles empty GeneratorArgs", func() {
-				generator, err := NewGenerator("", &GeneratorArgs{})
-				So(generator, ShouldNotBeNil)
-				So(err, ShouldBeNil)
-			})
+		Convey("Handles nil GeneratorArgs", func() {
+			generator, err := NewGenerator("", nil)
+			So(generator, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 		})
 
-		Convey("Empty", func() {
+		Convey("Handles empty GeneratorArgs", func() {
+			generator, err := NewGenerator("", &GeneratorArgs{})
+			So(generator, ShouldNotBeNil)
+			So(err, ShouldBeNil)
+		})
+	})
+}
+
+func TestGenEmpty(t *testing.T) {
+	t.Parallel()
+
+	Convey("Empty", t, func() {
+		args := &GeneratorArgs{
+			RngSource: rand.NewSource(0),
+		}
+		ConveyGeneratesStringMatching(args, "", "^$")
+	})
+}
+
+func TestGenLiterals(t *testing.T) {
+	t.Parallel()
+
+	Convey("Literals", t, func() {
+		ConveyGeneratesStringMatchingItself(nil,
+			"a",
+			"abc",
+		)
+	})
+}
+
+func TestGenDotNotNl(t *testing.T) {
+	t.Parallel()
+
+	Convey("DotNotNl", t, func() {
+		ConveyGeneratesStringMatchingItself(nil, ".")
+
+		Convey("No newlines are generated", func() {
+			generator, _ := NewGenerator(".", nil)
+
+			// Not a very strong assertion, but not sure how to do better. Exploring the entire
+			// generation space (2^32) takes far too long for a unit test.
+			for i := 0; i < SampleSize; i++ {
+				So(generator.Generate(), ShouldNotContainSubstring, "\n")
+			}
+		})
+	})
+}
+
+func TestGenStringStartEnd(t *testing.T) {
+	t.Parallel()
+
+	Convey("String start/end", t, func() {
+		args := &GeneratorArgs{
+			RngSource: rand.NewSource(0),
+			Flags:     0,
+		}
+
+		ConveyGeneratesStringMatching(args, `^abc$`, `^abc$`)
+		ConveyGeneratesStringMatching(args, `$abc^`, `^abc$`)
+		ConveyGeneratesStringMatching(args, `a^b$c`, `^abc$`)
+	})
+}
+
+func TestGenQuestionMark(t *testing.T) {
+	t.Parallel()
+
+	Convey("QuestionMark", t, func() {
+		ConveyGeneratesStringMatchingItself(nil,
+			"a?",
+			"(abc)?",
+			"[ab]?",
+			".?")
+	})
+}
+
+func TestGenPlus(t *testing.T) {
+	t.Parallel()
+
+	Convey("Plus", t, func() {
+		ConveyGeneratesStringMatchingItself(nil, "a+")
+	})
+}
+
+func TestGenStar(t *testing.T) {
+	t.Parallel()
+
+	Convey("Star", t, func() {
+		ConveyGeneratesStringMatchingItself(nil, "a*")
+
+		Convey("HitsDefaultMin", func() {
+			regexp := "a*"
 			args := &GeneratorArgs{
 				RngSource: rand.NewSource(0),
 			}
-			ConveyGeneratesStringMatching(args, "", "^$")
+			counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
+
+			So(counts[0], ShouldBeGreaterThan, 0)
 		})
 
-		Convey("Literals", func() {
-			ConveyGeneratesStringMatchingItself(nil,
-				"a",
-				"abc",
-			)
+		Convey("HitsCustomMin", func() {
+			regexp := "a*"
+			args := &GeneratorArgs{
+				RngSource:               rand.NewSource(0),
+				MinUnboundedRepeatCount: 200,
+			}
+			counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
+
+			So(counts[200], ShouldBeGreaterThan, 0)
+			for i := 0; i < 200; i++ {
+				So(counts[i], ShouldEqual, 0)
+			}
 		})
 
-		Convey("DotNotNl", func() {
-			ConveyGeneratesStringMatchingItself(nil, ".")
-
-			Convey("No newlines are generated", func() {
-				generator, _ := NewGenerator(".", nil)
-
-				// Not a very strong assertion, but not sure how to do better. Exploring the entire
-				// generation space (2^32) takes far too long for a unit test.
-				for i := 0; i < SampleSize; i++ {
-					So(generator.Generate(), ShouldNotContainSubstring, "\n")
-				}
-			})
-		})
-
-		Convey("String start/end", func() {
+		Convey("HitsDefaultMax", func() {
+			regexp := "a*"
 			args := &GeneratorArgs{
 				RngSource: rand.NewSource(0),
-				Flags:     0,
 			}
+			counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
 
-			ConveyGeneratesStringMatching(args, `^abc$`, `^abc$`)
-			ConveyGeneratesStringMatching(args, `$abc^`, `^abc$`)
-			ConveyGeneratesStringMatching(args, `a^b$c`, `^abc$`)
+			So(len(counts), ShouldEqual, DefaultMaxUnboundedRepeatCount+1)
+			So(counts[DefaultMaxUnboundedRepeatCount], ShouldBeGreaterThan, 0)
 		})
 
-		Convey("QuestionMark", func() {
-			ConveyGeneratesStringMatchingItself(nil,
-				"a?",
-				"(abc)?",
-				"[ab]?",
-				".?")
+		Convey("HitsCustomMax", func() {
+			regexp := "a*"
+			args := &GeneratorArgs{
+				RngSource:               rand.NewSource(0),
+				MaxUnboundedRepeatCount: 200,
+			}
+			counts := generateLenHistogram(regexp, 200, args)
+
+			So(len(counts), ShouldEqual, 200+1)
+			So(counts[200], ShouldBeGreaterThan, 0)
 		})
+	})
+}
 
-		Convey("Plus", func() {
-			ConveyGeneratesStringMatchingItself(nil, "a+")
+func TestGenCharClassNotNl(t *testing.T) {
+	t.Parallel()
+
+	Convey("CharClassNotNl", t, func() {
+		ConveyGeneratesStringMatchingItself(nil,
+			"[a]",
+			"[abc]",
+			"[a-d]",
+			"[ac]",
+			"[0-9]",
+			"[a-z0-9]",
+		)
+
+		Convey("No newlines are generated", func() {
+			// Try to narrow down the generation space. Still not a very strong assertion.
+			generator, _ := NewGenerator("[^a-zA-Z0-9]", nil)
+			for i := 0; i < SampleSize; i++ {
+				assert.NotEqual(t, "\n", generator.Generate())
+			}
 		})
+	})
+}
 
-		Convey("Star", func() {
-			ConveyGeneratesStringMatchingItself(nil, "a*")
+func TestGenNegativeCharClass(t *testing.T) {
+	t.Parallel()
 
-			Convey("HitsDefaultMin", func() {
-				regexp := "a*"
-				args := &GeneratorArgs{
-					RngSource: rand.NewSource(0),
-				}
-				counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
+	Convey("NegativeCharClass", t, func() {
+		ConveyGeneratesStringMatchingItself(nil, "[^a-zA-Z0-9]")
+	})
+}
 
-				So(counts[0], ShouldBeGreaterThan, 0)
-			})
+func TestGenAlternate(t *testing.T) {
+	t.Parallel()
 
-			Convey("HitsCustomMin", func() {
-				regexp := "a*"
-				args := &GeneratorArgs{
-					RngSource:               rand.NewSource(0),
-					MinUnboundedRepeatCount: 200,
-				}
-				counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
+	Convey("Alternate", t, func() {
+		ConveyGeneratesStringMatchingItself(nil,
+			"a|b",
+			"abc|def|ghi",
+			"[ab]|[cd]",
+			"foo|bar|baz", // rewrites to foo|ba[rz]
+		)
+	})
+}
 
-				So(counts[200], ShouldBeGreaterThan, 0)
-				for i := 0; i < 200; i++ {
-					So(counts[i], ShouldEqual, 0)
-				}
-			})
+func TestGenCapture(t *testing.T) {
+	t.Parallel()
+
+	Convey("Capture", t, func() {
+		ConveyGeneratesStringMatching(nil, "(abc)", "^abc$")
+		ConveyGeneratesStringMatching(nil, "()", "^$")
+	})
+}
+
+func TestGenConcat(t *testing.T) {
+	t.Parallel()
+
+	Convey("Concat", t, func() {
+		ConveyGeneratesStringMatchingItself(nil, "[ab][cd]")
+	})
+}
+
+func TestGenRepeat(t *testing.T) {
+	t.Parallel()
+
+	Convey("Repeat", t, func() {
+
+		Convey("Unbounded", func() {
+			ConveyGeneratesStringMatchingItself(nil, `a{1,}`)
 
 			Convey("HitsDefaultMax", func() {
-				regexp := "a*"
+				regexp := "a{0,}"
 				args := &GeneratorArgs{
 					RngSource: rand.NewSource(0),
 				}
@@ -192,7 +312,7 @@ func TestRegen(t *testing.T) {
 			})
 
 			Convey("HitsCustomMax", func() {
-				regexp := "a*"
+				regexp := "a{0,}"
 				args := &GeneratorArgs{
 					RngSource:               rand.NewSource(0),
 					MaxUnboundedRepeatCount: 200,
@@ -204,175 +324,108 @@ func TestRegen(t *testing.T) {
 			})
 		})
 
-		Convey("CharClassNotNl", func() {
+		Convey("HitsMin", func() {
+			regexp := "a{0,3}"
+			args := &GeneratorArgs{
+				RngSource: rand.NewSource(0),
+			}
+			counts := generateLenHistogram(regexp, 3, args)
+
+			So(len(counts), ShouldEqual, 3+1)
+			So(counts[0], ShouldBeGreaterThan, 0)
+		})
+
+		Convey("HitsMax", func() {
+			regexp := "a{0,3}"
+			args := &GeneratorArgs{
+				RngSource: rand.NewSource(0),
+			}
+			counts := generateLenHistogram(regexp, 3, args)
+
+			So(len(counts), ShouldEqual, 3+1)
+			So(counts[3], ShouldBeGreaterThan, 0)
+		})
+
+		Convey("IsWithinBounds", func() {
+			regexp := "a{5,10}"
+			args := &GeneratorArgs{
+				RngSource: rand.NewSource(0),
+			}
+			counts := generateLenHistogram(regexp, 10, args)
+
+			So(len(counts), ShouldEqual, 11)
+
+			for i := 0; i < 11; i++ {
+				if i < 5 {
+					So(counts[i], ShouldEqual, 0)
+				} else if i < 11 {
+					So(counts[i], ShouldBeGreaterThan, 0)
+				}
+			}
+		})
+	})
+}
+
+func TestGenCharClasses(t *testing.T) {
+	t.Parallel()
+
+	Convey("CharClasses", t, func() {
+
+		Convey("Ascii", func() {
 			ConveyGeneratesStringMatchingItself(nil,
-				"[a]",
-				"[abc]",
-				"[a-d]",
-				"[ac]",
-				"[0-9]",
-				"[a-z0-9]",
+				"[[:alnum:]]",
+				"[[:alpha:]]",
+				"[[:ascii:]]",
+				"[[:blank:]]",
+				"[[:cntrl:]]",
+				"[[:digit:]]",
+				"[[:graph:]]",
+				"[[:lower:]]",
+				"[[:print:]]",
+				"[[:punct:]]",
+				"[[:space:]]",
+				"[[:upper:]]",
+				"[[:word:]]",
+				"[[:xdigit:]]",
+				"[[:^alnum:]]",
+				"[[:^alpha:]]",
+				"[[:^ascii:]]",
+				"[[:^blank:]]",
+				"[[:^cntrl:]]",
+				"[[:^digit:]]",
+				"[[:^graph:]]",
+				"[[:^lower:]]",
+				"[[:^print:]]",
+				"[[:^punct:]]",
+				"[[:^space:]]",
+				"[[:^upper:]]",
+				"[[:^word:]]",
+				"[[:^xdigit:]]",
 			)
-
-			Convey("No newlines are generated", func() {
-				// Try to narrow down the generation space. Still not a very strong assertion.
-				generator, _ := NewGenerator("[^a-zA-Z0-9]", nil)
-				for i := 0; i < SampleSize; i++ {
-					assert.NotEqual(t, "\n", generator.Generate())
-				}
-			})
 		})
 
-		Convey("NegativeCharClass", func() {
-			ConveyGeneratesStringMatchingItself(nil, "[^a-zA-Z0-9]")
-		})
+		Convey("Perl", func() {
+			args := &GeneratorArgs{
+				Flags: syntax.Perl,
+			}
 
-		Convey("Alternate", func() {
-			ConveyGeneratesStringMatchingItself(nil,
-				"a|b",
-				"abc|def|ghi",
-				"[ab]|[cd]",
-				"foo|bar|baz", // rewrites to foo|ba[rz]
+			ConveyGeneratesStringMatchingItself(args,
+				`\d`,
+				`\s`,
+				`\w`,
+				`\D`,
+				`\S`,
+				`\W`,
 			)
 		})
 
-		Convey("Capture", func() {
-			ConveyGeneratesStringMatching(nil, "(abc)", "^abc$")
-			ConveyGeneratesStringMatching(nil, "()", "^$")
-		})
+		Convey("Unicode groups not supported", func() {
+			args := &GeneratorArgs{
+				Flags: syntax.UnicodeGroups,
+			}
 
-		Convey("Concat", func() {
-			ConveyGeneratesStringMatchingItself(nil, "[ab][cd]")
-		})
-
-		Convey("Repeat", func() {
-
-			Convey("Unbounded", func() {
-				ConveyGeneratesStringMatchingItself(nil, `a{1,}`)
-
-				Convey("HitsDefaultMax", func() {
-					regexp := "a{0,}"
-					args := &GeneratorArgs{
-						RngSource: rand.NewSource(0),
-					}
-					counts := generateLenHistogram(regexp, DefaultMaxUnboundedRepeatCount, args)
-
-					So(len(counts), ShouldEqual, DefaultMaxUnboundedRepeatCount+1)
-					So(counts[DefaultMaxUnboundedRepeatCount], ShouldBeGreaterThan, 0)
-				})
-
-				Convey("HitsCustomMax", func() {
-					regexp := "a{0,}"
-					args := &GeneratorArgs{
-						RngSource:               rand.NewSource(0),
-						MaxUnboundedRepeatCount: 200,
-					}
-					counts := generateLenHistogram(regexp, 200, args)
-
-					So(len(counts), ShouldEqual, 200+1)
-					So(counts[200], ShouldBeGreaterThan, 0)
-				})
-			})
-
-			Convey("HitsMin", func() {
-				regexp := "a{0,3}"
-				args := &GeneratorArgs{
-					RngSource: rand.NewSource(0),
-				}
-				counts := generateLenHistogram(regexp, 3, args)
-
-				So(len(counts), ShouldEqual, 3+1)
-				So(counts[0], ShouldBeGreaterThan, 0)
-			})
-
-			Convey("HitsMax", func() {
-				regexp := "a{0,3}"
-				args := &GeneratorArgs{
-					RngSource: rand.NewSource(0),
-				}
-				counts := generateLenHistogram(regexp, 3, args)
-
-				So(len(counts), ShouldEqual, 3+1)
-				So(counts[3], ShouldBeGreaterThan, 0)
-			})
-
-			Convey("IsWithinBounds", func() {
-				regexp := "a{5,10}"
-				args := &GeneratorArgs{
-					RngSource: rand.NewSource(0),
-				}
-				counts := generateLenHistogram(regexp, 10, args)
-
-				So(len(counts), ShouldEqual, 11)
-
-				for i := 0; i < 11; i++ {
-					if i < 5 {
-						So(counts[i], ShouldEqual, 0)
-					} else if i < 11 {
-						So(counts[i], ShouldBeGreaterThan, 0)
-					}
-				}
-			})
-		})
-
-		Convey("CharClasses", func() {
-
-			Convey("Ascii", func() {
-				ConveyGeneratesStringMatchingItself(nil,
-					"[[:alnum:]]",
-					"[[:alpha:]]",
-					"[[:ascii:]]",
-					"[[:blank:]]",
-					"[[:cntrl:]]",
-					"[[:digit:]]",
-					"[[:graph:]]",
-					"[[:lower:]]",
-					"[[:print:]]",
-					"[[:punct:]]",
-					"[[:space:]]",
-					"[[:upper:]]",
-					"[[:word:]]",
-					"[[:xdigit:]]",
-					"[[:^alnum:]]",
-					"[[:^alpha:]]",
-					"[[:^ascii:]]",
-					"[[:^blank:]]",
-					"[[:^cntrl:]]",
-					"[[:^digit:]]",
-					"[[:^graph:]]",
-					"[[:^lower:]]",
-					"[[:^print:]]",
-					"[[:^punct:]]",
-					"[[:^space:]]",
-					"[[:^upper:]]",
-					"[[:^word:]]",
-					"[[:^xdigit:]]",
-				)
-			})
-
-			Convey("Perl", func() {
-				args := &GeneratorArgs{
-					Flags: syntax.Perl,
-				}
-
-				ConveyGeneratesStringMatchingItself(args,
-					`\d`,
-					`\s`,
-					`\w`,
-					`\D`,
-					`\S`,
-					`\W`,
-				)
-			})
-
-			Convey("Unicode groups not supported", func() {
-				args := &GeneratorArgs{
-					Flags: syntax.UnicodeGroups,
-				}
-
-				_, err := NewGenerator("", args)
-				So(err, ShouldNotBeNil)
-			})
+			_, err := NewGenerator("", args)
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
