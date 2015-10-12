@@ -199,7 +199,22 @@ func opCapture(regexp *syntax.Regexp, args *GeneratorArgs) (*internalGenerator, 
 		return nil, err
 	}
 
-	return newGenerator(regexp.Sub[0], args)
+	groupRegexp := regexp.Sub[0]
+	generator, err := newGenerator(groupRegexp, args)
+	if err != nil {
+		return nil, err
+	}
+
+	// Group indices are 0-based, but index 0 is the whole expression.
+	index := regexp.Cap - 1
+
+	return &internalGenerator{regexp.String(), func() string {
+		return args.CaptureGroupHandler(index, regexp.Name, groupRegexp, generator, args)
+	}}, nil
+}
+
+func defaultCaptureGroupHandler(index int, name string, group *syntax.Regexp, generator Generator, args *GeneratorArgs) string {
+	return generator.Generate()
 }
 
 // Panic if r.Op != op.

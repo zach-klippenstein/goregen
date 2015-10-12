@@ -100,6 +100,14 @@ import (
 // DefaultMaxUnboundedRepeatCount is default value for MaxUnboundedRepeatCount.
 const DefaultMaxUnboundedRepeatCount = 4096
 
+// CaptureGroupHandler is a function that is called for each capture group in a regular expression.
+// index and name are the index and name of the group. If unnamed, name is empty. The first capture group has index 0
+// (not 1, as when matching).
+// group is the regular expression within the group (e.g. for `(\w+)`, group would be `\w+`).
+// generator is the generator for group.
+// args is the args used to create the generator calling this function.
+type CaptureGroupHandler func(index int, name string, group *syntax.Regexp, generator Generator, args *GeneratorArgs) string
+
 // GeneratorArgs are arguments passed to NewGenerator that control how generators
 // are created.
 type GeneratorArgs struct {
@@ -117,6 +125,10 @@ type GeneratorArgs struct {
 	// Default is 0.
 	MinUnboundedRepeatCount uint
 
+	// Set this to perform special processing of capture groups (e.g. `(\w+)`). The zero value will generate strings
+	// from the expressions in the group.
+	CaptureGroupHandler CaptureGroupHandler
+
 	// Used by generators.
 	rng *rand.Rand
 }
@@ -124,6 +136,7 @@ type GeneratorArgs struct {
 // Generator generates random strings.
 type Generator interface {
 	Generate() string
+	String() string
 }
 
 /*
@@ -167,6 +180,10 @@ func NewGenerator(pattern string, inputArgs *GeneratorArgs) (generator Generator
 
 	if args.MaxUnboundedRepeatCount < 1 {
 		args.MaxUnboundedRepeatCount = DefaultMaxUnboundedRepeatCount
+	}
+
+	if args.CaptureGroupHandler == nil {
+		args.CaptureGroupHandler = defaultCaptureGroupHandler
 	}
 
 	var regexp *syntax.Regexp
