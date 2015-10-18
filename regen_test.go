@@ -19,6 +19,7 @@ package regen
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"regexp"
 	"regexp/syntax"
 	"testing"
@@ -80,6 +81,27 @@ func ExampleNewGenerator_perl() {
 	}
 	// Output:
 	// Matches!
+}
+
+func ExampleCaptureGroupHandler() {
+	pattern := `Hello, (?P<firstname>[A-Z][a-z]{2,10}) (?P<lastname>[A-Z][a-z]{2,10})`
+
+	generator, _ := NewGenerator(pattern, &GeneratorArgs{
+		Flags: syntax.Perl,
+		CaptureGroupHandler: func(index int, name string, group *syntax.Regexp, generator Generator, args *GeneratorArgs) string {
+			if name == "firstname" {
+				return fmt.Sprintf("FirstName (e.g. %s)", generator.Generate())
+			}
+			return fmt.Sprintf("LastName (e.g. %s)", generator.Generate())
+		},
+	})
+
+	// Print to stderr since we're generating random output and can't assert equality.
+	fmt.Fprintln(os.Stderr, generator.Generate())
+
+	// Needed for "go test" to run this example. (Must be a blank line before.)
+
+	// Output:
 }
 
 func TestNewGenerator(t *testing.T) {
@@ -430,6 +452,40 @@ func TestGenCharClasses(t *testing.T) {
 	})
 }
 
+func TestCaptureGroupHandler(t *testing.T) {
+	t.Parallel()
+
+	Convey("CaptureGroupHandler", t, func() {
+		callCount := 0
+
+		gen, err := NewGenerator(`(?:foo) (bar) (?P<name>baz)`, &GeneratorArgs{
+			Flags: syntax.PerlX,
+			CaptureGroupHandler: func(index int, name string, group *syntax.Regexp, generator Generator, args *GeneratorArgs) string {
+				callCount++
+
+				So(index, ShouldBeLessThan, 2)
+
+				if index == 0 {
+					So(name, ShouldEqual, "")
+					So(group.String(), ShouldEqual, "bar")
+					So(generator.Generate(), ShouldEqual, "bar")
+					return "one"
+				}
+
+				// Index 1
+				So(name, ShouldEqual, "name")
+				So(group.String(), ShouldEqual, "baz")
+				So(generator.Generate(), ShouldEqual, "baz")
+				return "two"
+			},
+		})
+		So(err, ShouldBeNil)
+
+		So(gen.Generate(), ShouldEqual, "foo one two")
+		So(callCount, ShouldEqual, 2)
+	})
+}
+
 func ConveyGeneratesStringMatchingItself(args *GeneratorArgs, patterns ...string) {
 	for _, pattern := range patterns {
 		Convey(fmt.Sprintf("String generated from /%s/ matches itself", pattern), func() {
@@ -493,15 +549,6 @@ func generateLenHistogram(regexp string, maxLen int, args *GeneratorArgs) (count
 		}
 
 		counts[len(str)]++
-	}
-
-	Println("counts:")
-	for i, count := range counts {
-		if i < 10 || i > maxLen-10 {
-			Printf("%d: %d\n", i, count)
-		} else if i == 11 {
-			Println("…")
-		}
 	}
 
 	return
