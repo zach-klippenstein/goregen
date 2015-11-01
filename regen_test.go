@@ -104,6 +104,66 @@ func ExampleCaptureGroupHandler() {
 	// Output:
 }
 
+func TestGeneratorArgs(t *testing.T) {
+	t.Parallel()
+
+	Convey("initialize", t, func() {
+		Convey("Handles empty struct", func() {
+			args := GeneratorArgs{}
+
+			var err error
+			So(func() { err = args.initialize() }, ShouldNotPanic)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Unicode groups not supported", func() {
+			args := &GeneratorArgs{
+				Flags: syntax.UnicodeGroups,
+			}
+
+			err := args.initialize()
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldEqual, "UnicodeGroups not supported")
+		})
+
+		Convey("Panics if repeat bounds are invalid", func() {
+			args := &GeneratorArgs{
+				MinUnboundedRepeatCount: 2,
+				MaxUnboundedRepeatCount: 1,
+			}
+
+			So(func() { args.initialize() },
+				ShouldPanicWith,
+				"MinUnboundedRepeatCount(2) > MaxUnboundedRepeatCount(1)")
+		})
+
+		Convey("Allows equal repeat bounds", func() {
+			args := &GeneratorArgs{
+				MinUnboundedRepeatCount: 1,
+				MaxUnboundedRepeatCount: 1,
+			}
+
+			var err error
+			So(func() { err = args.initialize() }, ShouldNotPanic)
+			So(err, ShouldBeNil)
+		})
+	})
+
+	Convey("Rng", t, func() {
+		Convey("Panics if called before initialization", func() {
+			args := GeneratorArgs{}
+			So(func() { args.Rng() }, ShouldPanic)
+		})
+
+		Convey("Non-nil after initialization", func() {
+			args := GeneratorArgs{}
+			err := args.initialize()
+			So(err, ShouldBeNil)
+			So(args.Rng(), ShouldNotBeNil)
+		})
+	})
+}
+
 func TestNewGenerator(t *testing.T) {
 	t.Parallel()
 
@@ -119,6 +179,15 @@ func TestNewGenerator(t *testing.T) {
 			generator, err := NewGenerator("", &GeneratorArgs{})
 			So(generator, ShouldNotBeNil)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("Forwards errors from args initialization", func() {
+			args := &GeneratorArgs{
+				Flags: syntax.UnicodeGroups,
+			}
+
+			_, err := NewGenerator("", args)
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -439,15 +508,6 @@ func TestGenCharClasses(t *testing.T) {
 				`\S`,
 				`\W`,
 			)
-		})
-
-		Convey("Unicode groups not supported", func() {
-			args := &GeneratorArgs{
-				Flags: syntax.UnicodeGroups,
-			}
-
-			_, err := NewGenerator("", args)
-			So(err, ShouldNotBeNil)
 		})
 	})
 }
