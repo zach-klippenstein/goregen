@@ -53,6 +53,9 @@ func ExampleGenerate() {
 func ExampleNewGenerator() {
 	pattern := "[ab]{5}"
 
+	// Note that this uses a constant seed, so the generated string
+	// will always be the same across different runs of the program.
+	// Use a more random seed for real use (e.g. time-based).
 	generator, _ := NewGenerator(pattern, &GeneratorArgs{
 		RngSource: rand.NewSource(0),
 	})
