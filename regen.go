@@ -96,6 +96,7 @@ import (
 	"fmt"
 	"math/rand"
 	"regexp/syntax"
+	"time"
 )
 
 // DefaultMaxUnboundedRepeatCount is default value for MaxUnboundedRepeatCount.
@@ -138,7 +139,7 @@ type GeneratorArgs struct {
 func (a *GeneratorArgs) initialize() error {
 	var seed int64
 	if nil == a.RngSource {
-		seed = rand.Int63()
+		seed = time.Now().UnixNano()
 	} else {
 		seed = a.RngSource.Int63()
 	}
