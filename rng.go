@@ -31,10 +31,16 @@ To create a source with the default seed:
 type xorShift64Source uint64
 
 func (src *xorShift64Source) Seed(seed int64) {
+	if src == nil {
+		return
+	}
 	*src = xorShift64Source(seed)
 }
 
 func (src *xorShift64Source) Int63() int64 {
+	if src == nil {
+		return -1
+	}
 	// A zero seed will only generate zeros.
 	if *src == 0 {
 		*src = 1
